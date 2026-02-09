@@ -1,9 +1,12 @@
-# Ignore everything except src folder
+# Ignore everything except src folder and main notebook
 *
 
 # But don't ignore src folder
 !src/
 !src/**
+
+# Don't ignore main notebook
+!main.ipynb
 
 # Ignore Python cache files
 **/__pycache__/
