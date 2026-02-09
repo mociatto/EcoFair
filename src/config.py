@@ -46,3 +46,6 @@ DATA_PATH = '/kaggle/input/skin-cancer-mnist-ham10000/HAM10000_metadata.csv'
 # Model Selection
 SELECTED_HEAVY_MODEL = 'ResNet50'        # Options: EfficientNetB6, ResNet152V2, DenseNet201, InceptionResNetV2, ResNet50
 SELECTED_LITE_MODEL = 'MobileNetV3Small'  # Options: MobileNetV3Small, MobileNetV3Large, EfficientNetB0, MobileNetV2, NASNetMobile
+
+# Version
+VERSION = "0.1.0"
