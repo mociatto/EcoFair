@@ -5,8 +5,9 @@
 !src/
 !src/**
 
-# Don't ignore main notebook
+# Don't ignore main notebook and main.py
 !main.ipynb
+!main.py
 
 # Ignore Python cache files
 **/__pycache__/
