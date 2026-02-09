@@ -1,0 +1,15 @@
+# Ignore everything except src folder
+*
+
+# But don't ignore src folder
+!src/
+!src/**
+
+# Ignore Python cache files
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Don't ignore .gitignore itself
+!.gitignore
