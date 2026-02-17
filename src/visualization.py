@@ -85,10 +85,11 @@ def plot_metadata_distributions(meta_df, dataset_name='HAM10000'):
                           color='orangered', marker='o', linewidth=2, markersize=8, label='Malignancy Rate')
     ax1_twin.set_ylim([0, 100])
     ax1_twin.tick_params(axis='y', labelleft=False, left=False, labelright=False, right=False)
+    ax1_twin.grid(False)
     
     ax1.set_title('Age Distribution and Malignancy Rate', fontsize=14, fontweight='normal', pad=20)
-    ax1.legend(loc='upper left', fontsize=10, framealpha=0.5)
-    ax1_twin.legend(loc='upper right', fontsize=10, framealpha=0.5)
+    ax1.legend(loc='upper left', fontsize=10, frameon=True, framealpha=0.9, edgecolor='gray', facecolor='white')
+    ax1_twin.legend(loc='upper right', fontsize=10, frameon=True, framealpha=0.9, edgecolor='gray', facecolor='white')
     
     # Localization distribution
     ax2 = axes[1]
@@ -107,10 +108,11 @@ def plot_metadata_distributions(meta_df, dataset_name='HAM10000'):
     ax2_twin.set_ylabel('Malignancy Rate (%)', fontsize=12, fontweight='normal')
     ax2_twin.tick_params(axis='y')
     ax2_twin.set_ylim([0, 100])
+    ax2_twin.grid(False)
     
     ax2.set_title('Localization Distribution and Malignancy Rate', fontsize=14, fontweight='normal', pad=20)
-    ax2.legend(loc='upper left', fontsize=10, framealpha=0.5)
-    ax2_twin.legend(loc='upper right', fontsize=10, framealpha=0.5)
+    ax2.legend(loc='upper left', fontsize=10, frameon=True, framealpha=0.9, edgecolor='gray', facecolor='white')
+    ax2_twin.legend(loc='upper right', fontsize=10, frameon=True, framealpha=0.9, edgecolor='gray', facecolor='white')
     
     plt.tight_layout()
     
@@ -355,7 +357,7 @@ def plot_value_added_bars(y_true, lite_preds, heavy_preds, dynamic_preds, class_
     ax.set_xticks(x)
     ax.set_xticklabels(class_names_list)
     ax.set_ylim([0, 100])
-    ax.legend(loc='lower left', fontsize=9, framealpha=0.5)
+    ax.legend(loc='lower left', fontsize=9, frameon=True, framealpha=0.9, edgecolor='gray', facecolor='white')
     ax.grid(True, axis='y', alpha=0.3, linestyle='--')
     ax.set_axisbelow(True)
     
@@ -460,7 +462,7 @@ def plot_risk_stratified_accuracy(y_true, lite_preds, heavy_preds, dynamic_preds
     ax.set_xticks(x)
     ax.set_xticklabels(risk_groups)
     ax.set_ylim([0, 1.0])
-    ax.legend(loc='lower left', fontsize=10, framealpha=0.5)
+    ax.legend(loc='lower left', fontsize=10, frameon=True, framealpha=0.9, edgecolor='gray', facecolor='white')
     ax.grid(True, alpha=0.3, axis='y', linestyle='--')
     ax.xaxis.grid(False)
     ax.set_axisbelow(True)
@@ -540,7 +542,7 @@ def plot_battery_decay(lite_joules, heavy_joules, routing_rate, capacity_joules=
     ax.set_title('Battery Decay Comparison: Pure Lite vs Pure Heavy vs EcoFair',
                 fontsize=14, fontweight='normal', pad=15)
     ax.set_ylim([0, 100])
-    ax.legend(loc='upper right', fontsize=10, framealpha=0.5)
+    ax.legend(loc='upper right', fontsize=10, frameon=True, framealpha=0.9, edgecolor='gray', facecolor='white')
     ax.grid(True, alpha=0.3, axis='y', linestyle='--')
     ax.xaxis.grid(False)
     ax.set_axisbelow(True)
@@ -733,7 +735,7 @@ def plot_classwise_accuracy_bars(y_true, lite_preds, heavy_preds, dynamic_preds,
     return fig
 
 
-def plot_gender_age_accuracy(y_true, lite_preds, heavy_preds, dynamic_preds, meta_df, class_names=None):
+def plot_gender_age_accuracy(y_true, lite_preds, heavy_preds, dynamic_preds, meta_df, class_names=None, axes=None):
     """
     Plot model accuracy by Gender and Age categories.
     
@@ -746,6 +748,7 @@ def plot_gender_age_accuracy(y_true, lite_preds, heavy_preds, dynamic_preds, met
         dynamic_preds: Dynamic predictions (class indices or probabilities)
         meta_df: DataFrame with metadata columns ('age', 'sex' or 'gender')
         class_names: List of class names. If None, uses config.CLASS_NAMES
+        axes: Optional tuple (ax1, ax2) to draw on. If None, a new figure is created.
     
     Returns:
         matplotlib.figure.Figure: Figure object with two subplots (Gender and Age)
@@ -774,8 +777,12 @@ def plot_gender_age_accuracy(y_true, lite_preds, heavy_preds, dynamic_preds, met
     color_heavy = 'orangered'
     color_ecofair = 'lightgreen'
     
-    # Create figure with two subplots
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+    # Create figure with two subplots or use provided axes
+    if axes is not None:
+        ax1, ax2 = axes[0], axes[1]
+        fig = ax1.get_figure()
+    else:
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
     
     # 1. Gender-based Grouped Bar Chart
     meta_df_copy = meta_df.copy()
@@ -830,7 +837,7 @@ def plot_gender_age_accuracy(y_true, lite_preds, heavy_preds, dynamic_preds, met
     ax1.set_xticks(x_gender)
     ax1.set_xticklabels(gender_categories)
     ax1.set_ylim([0, 1.0])
-    ax1.legend(loc='lower right', fontsize=10, framealpha=0.5)
+    ax1.legend(loc='lower right', fontsize=10, frameon=True, framealpha=0.9, edgecolor='gray', facecolor='white')
     ax1.grid(True, alpha=0.3, axis='y', linestyle='--')
     ax1.xaxis.grid(False)
     ax1.set_axisbelow(True)
@@ -886,7 +893,7 @@ def plot_gender_age_accuracy(y_true, lite_preds, heavy_preds, dynamic_preds, met
     ax2.set_xticks(x_age)
     ax2.set_xticklabels(age_categories)
     ax2.set_ylim([0, 1.0])
-    ax2.legend(loc='lower right', fontsize=10, framealpha=0.5)
+    ax2.legend(loc='lower right', fontsize=10, frameon=True, framealpha=0.9, edgecolor='gray', facecolor='white')
     ax2.grid(True, alpha=0.3, axis='y', linestyle='--')
     ax2.xaxis.grid(False)
     ax2.set_axisbelow(True)
