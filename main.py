@@ -247,6 +247,10 @@ try:
     plt.tight_layout()
     plt.show()
 except TypeError:
+    try:
+        plt.close(fig_comprehensive)
+    except NameError:
+        pass
     fig_gender_age = visualization.plot_gender_age_accuracy(
         y_true_test, lite_preds_test, heavy_preds_test, final_preds_ham, meta_test
     )

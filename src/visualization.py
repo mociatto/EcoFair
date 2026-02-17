@@ -88,8 +88,10 @@ def plot_metadata_distributions(meta_df, dataset_name='HAM10000'):
     ax1_twin.grid(False)
     
     ax1.set_title('Age Distribution and Malignancy Rate', fontsize=14, fontweight='normal', pad=20)
-    ax1.legend(loc='upper left', fontsize=10, frameon=True, framealpha=0.9, edgecolor='gray', facecolor='white')
-    ax1_twin.legend(loc='upper right', fontsize=10, frameon=True, framealpha=0.9, edgecolor='gray', facecolor='white')
+    leg1 = ax1.legend(loc='upper left', fontsize=10, frameon=True, framealpha=1.0, edgecolor='black', facecolor='white')
+    leg1.get_frame().set_linewidth(1.5)
+    leg1_twin = ax1_twin.legend(loc='upper right', fontsize=10, frameon=True, framealpha=1.0, edgecolor='black', facecolor='white')
+    leg1_twin.get_frame().set_linewidth(1.5)
     
     # Localization distribution
     ax2 = axes[1]
@@ -111,8 +113,10 @@ def plot_metadata_distributions(meta_df, dataset_name='HAM10000'):
     ax2_twin.grid(False)
     
     ax2.set_title('Localization Distribution and Malignancy Rate', fontsize=14, fontweight='normal', pad=20)
-    ax2.legend(loc='upper left', fontsize=10, frameon=True, framealpha=0.9, edgecolor='gray', facecolor='white')
-    ax2_twin.legend(loc='upper right', fontsize=10, frameon=True, framealpha=0.9, edgecolor='gray', facecolor='white')
+    leg2 = ax2.legend(loc='upper left', fontsize=10, frameon=True, framealpha=1.0, edgecolor='black', facecolor='white')
+    leg2.get_frame().set_linewidth(1.5)
+    leg2_twin = ax2_twin.legend(loc='upper right', fontsize=10, frameon=True, framealpha=1.0, edgecolor='black', facecolor='white')
+    leg2_twin.get_frame().set_linewidth(1.5)
     
     plt.tight_layout()
     
@@ -357,7 +361,8 @@ def plot_value_added_bars(y_true, lite_preds, heavy_preds, dynamic_preds, class_
     ax.set_xticks(x)
     ax.set_xticklabels(class_names_list)
     ax.set_ylim([0, 100])
-    ax.legend(loc='lower left', fontsize=9, frameon=True, framealpha=0.9, edgecolor='gray', facecolor='white')
+    leg = ax.legend(loc='lower left', fontsize=9, frameon=True, framealpha=1.0, edgecolor='black', facecolor='white')
+    leg.get_frame().set_linewidth(1.5)
     ax.grid(True, axis='y', alpha=0.3, linestyle='--')
     ax.set_axisbelow(True)
     
@@ -462,7 +467,8 @@ def plot_risk_stratified_accuracy(y_true, lite_preds, heavy_preds, dynamic_preds
     ax.set_xticks(x)
     ax.set_xticklabels(risk_groups)
     ax.set_ylim([0, 1.0])
-    ax.legend(loc='lower left', fontsize=10, frameon=True, framealpha=0.9, edgecolor='gray', facecolor='white')
+    leg = ax.legend(loc='lower left', fontsize=10, frameon=True, framealpha=1.0, edgecolor='black', facecolor='white')
+    leg.get_frame().set_linewidth(1.5)
     ax.grid(True, alpha=0.3, axis='y', linestyle='--')
     ax.xaxis.grid(False)
     ax.set_axisbelow(True)
@@ -542,7 +548,8 @@ def plot_battery_decay(lite_joules, heavy_joules, routing_rate, capacity_joules=
     ax.set_title('Battery Decay Comparison: Pure Lite vs Pure Heavy vs EcoFair',
                 fontsize=14, fontweight='normal', pad=15)
     ax.set_ylim([0, 100])
-    ax.legend(loc='upper right', fontsize=10, frameon=True, framealpha=0.9, edgecolor='gray', facecolor='white')
+    leg = ax.legend(loc='upper right', fontsize=10, frameon=True, framealpha=1.0, edgecolor='black', facecolor='white')
+    leg.get_frame().set_linewidth(1.5)
     ax.grid(True, alpha=0.3, axis='y', linestyle='--')
     ax.xaxis.grid(False)
     ax.set_axisbelow(True)
@@ -837,7 +844,8 @@ def plot_gender_age_accuracy(y_true, lite_preds, heavy_preds, dynamic_preds, met
     ax1.set_xticks(x_gender)
     ax1.set_xticklabels(gender_categories)
     ax1.set_ylim([0, 1.0])
-    ax1.legend(loc='lower right', fontsize=10, frameon=True, framealpha=0.9, edgecolor='gray', facecolor='white')
+    leg1 = ax1.legend(loc='lower right', fontsize=10, frameon=True, framealpha=1.0, edgecolor='black', facecolor='white')
+    leg1.get_frame().set_linewidth(1.5)
     ax1.grid(True, alpha=0.3, axis='y', linestyle='--')
     ax1.xaxis.grid(False)
     ax1.set_axisbelow(True)
@@ -893,7 +901,8 @@ def plot_gender_age_accuracy(y_true, lite_preds, heavy_preds, dynamic_preds, met
     ax2.set_xticks(x_age)
     ax2.set_xticklabels(age_categories)
     ax2.set_ylim([0, 1.0])
-    ax2.legend(loc='lower right', fontsize=10, frameon=True, framealpha=0.9, edgecolor='gray', facecolor='white')
+    leg2 = ax2.legend(loc='lower right', fontsize=10, frameon=True, framealpha=1.0, edgecolor='black', facecolor='white')
+    leg2.get_frame().set_linewidth(1.5)
     ax2.grid(True, alpha=0.3, axis='y', linestyle='--')
     ax2.xaxis.grid(False)
     ax2.set_axisbelow(True)
