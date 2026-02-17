@@ -1,10 +1,22 @@
 # %% Imports
 import sys
 import os
+import subprocess
 
-# Add the project root to Python path
-if os.path.exists('./src'):
-    sys.path.append('.')
+# Ensure EcoFair src is on path: clone repo if not present (e.g. on Kaggle)
+REPO_URL = "https://github.com/mociatto/EcoFair.git"
+REPO_DIR = "EcoFair"
+
+if os.path.exists("./src"):
+    # Already inside the repo (e.g. running locally)
+    sys.path.insert(0, os.path.abspath("."))
+elif os.path.exists(os.path.join(".", REPO_DIR, "src")):
+    # Repo already cloned in current directory
+    sys.path.insert(0, os.path.abspath(REPO_DIR))
+else:
+    # Clone the repo so we can import src
+    subprocess.run(["git", "clone", "--depth", "1", REPO_URL, REPO_DIR], check=True)
+    sys.path.insert(0, os.path.abspath(REPO_DIR))
 
 from src import config, utils, data_loader, models, training, features, routing, fairness, visualization
 import numpy as np
@@ -192,19 +204,18 @@ fig_classwise = visualization.plot_classwise_accuracy_bars(
 )
 plt.show()
 
-# %% Value-Added Analysis
-print("\nPlotting value-added analysis...")
-fig_va = visualization.plot_value_added_bars(
+# %% Value-Added Analysis & Routing Breakdown (side by side)
+print("\nPlotting value-added analysis and routing breakdown...")
+fig_va_doughnut, axes_va_doughnut = plt.subplots(1, 2, figsize=(18, 7))
+visualization.plot_value_added_bars(
     y_true_test, lite_preds_test, heavy_preds_test, final_preds_ham,
-    route_mask=route_mask_ham
+    route_mask=route_mask_ham, ax=axes_va_doughnut[0]
 )
-plt.show()
-
-# %% Routing Breakdown Doughnut Chart
-print("\nPlotting routing breakdown...")
-fig_doughnut = visualization.plot_routing_breakdown_doughnut(
-    entropy_test, safe_danger_gap_test, route_mask_ham, len(route_mask_ham)
+visualization.plot_routing_breakdown_doughnut(
+    entropy_test, safe_danger_gap_test, route_mask_ham, len(route_mask_ham),
+    ax=axes_va_doughnut[1]
 )
+plt.tight_layout()
 plt.show()
 
 # %% Comprehensive Performance Analysis: Gender, Age, Risk Groups, and Battery Decay
@@ -216,27 +227,25 @@ fig_gender_age = visualization.plot_gender_age_accuracy(
 )
 plt.show()
 
-# Risk-stratified accuracy plot
-fig_risk = visualization.plot_risk_stratified_accuracy(
-    y_true_test, lite_preds_test, heavy_preds_test, final_preds_ham, meta_test, risk_scaler=risk_scaler
-)
-plt.show()
-
-# Battery decay plot
-# Load energy stats
+# Risk-stratified accuracy & Battery decay (side by side)
 joules_per_lite = utils.load_energy_stats(config.SELECTED_LITE_MODEL, is_heavy=False)
 joules_per_heavy = utils.load_energy_stats(config.SELECTED_HEAVY_MODEL, is_heavy=True)
-
 if joules_per_lite is None:
     joules_per_lite = 1.0
 if joules_per_heavy is None:
     joules_per_heavy = 2.5
-
 routing_rate = route_mask_ham.sum() / len(route_mask_ham)
 
-fig_battery = visualization.plot_battery_decay(
-    joules_per_lite, joules_per_heavy, routing_rate, capacity_joules=10000
+fig_risk_battery, axes_risk_battery = plt.subplots(1, 2, figsize=(20, 6))
+visualization.plot_risk_stratified_accuracy(
+    y_true_test, lite_preds_test, heavy_preds_test, final_preds_ham, meta_test,
+    risk_scaler=risk_scaler, ax=axes_risk_battery[0]
 )
+visualization.plot_battery_decay(
+    joules_per_lite, joules_per_heavy, routing_rate, capacity_joules=10000,
+    ax=axes_risk_battery[1]
+)
+plt.tight_layout()
 plt.show()
 
 # %% Fairness Analysis

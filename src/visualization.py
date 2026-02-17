@@ -79,6 +79,7 @@ def plot_metadata_distributions(meta_df, dataset_name='HAM10000'):
     ax1.set_xticklabels(age_counts.index, rotation=90, ha='right')
     ax1.tick_params(axis='y')
     ax1.grid(True, alpha=0.3, axis='y')
+    ax1.xaxis.grid(False)
     
     line1 = ax1_twin.plot(range(len(age_malignancy_rate)), age_malignancy_rate.values,
                           color='orangered', marker='o', linewidth=2, markersize=8, label='Malignancy Rate')
@@ -86,8 +87,8 @@ def plot_metadata_distributions(meta_df, dataset_name='HAM10000'):
     ax1_twin.tick_params(axis='y', labelleft=False, left=False, labelright=False, right=False)
     
     ax1.set_title('Age Distribution and Malignancy Rate', fontsize=14, fontweight='normal', pad=20)
-    ax1.legend(loc='upper left', fontsize=10)
-    ax1_twin.legend(loc='upper right', fontsize=10)
+    ax1.legend(loc='upper left', fontsize=10, framealpha=0.5)
+    ax1_twin.legend(loc='upper right', fontsize=10, framealpha=0.5)
     
     # Localization distribution
     ax2 = axes[1]
@@ -99,6 +100,7 @@ def plot_metadata_distributions(meta_df, dataset_name='HAM10000'):
     ax2.set_xticklabels([loc.title() for loc in loc_counts.index], rotation=90, ha='right')
     ax2.tick_params(axis='y', labelleft=False, left=False)
     ax2.grid(True, alpha=0.3, axis='y')
+    ax2.xaxis.grid(False)
     
     line2 = ax2_twin.plot(range(len(loc_malignancy_rate)), loc_malignancy_rate.values,
                           color='orangered', marker='o', linewidth=2, markersize=8, label='Malignancy Rate')
@@ -107,8 +109,8 @@ def plot_metadata_distributions(meta_df, dataset_name='HAM10000'):
     ax2_twin.set_ylim([0, 100])
     
     ax2.set_title('Localization Distribution and Malignancy Rate', fontsize=14, fontweight='normal', pad=20)
-    ax2.legend(loc='upper left', fontsize=10)
-    ax2_twin.legend(loc='upper right', fontsize=10)
+    ax2.legend(loc='upper left', fontsize=10, framealpha=0.5)
+    ax2_twin.legend(loc='upper right', fontsize=10, framealpha=0.5)
     
     plt.tight_layout()
     
@@ -178,6 +180,7 @@ def plot_confusion_matrix_comparison(y_true, lite_preds, heavy_preds, dynamic_pr
         cmap = LinearSegmentedColormap.from_list('custom', colors_list, N=n_bins)
         
         im = ax.imshow(cm_normalized, interpolation='nearest', cmap=cmap, aspect='auto', vmin=0, vmax=1)
+        ax.grid(False)
         ax.set_title(title, fontsize=14, fontweight='normal', pad=15)
         ax.set_xticks(np.arange(len(class_names)))
         ax.set_yticks(np.arange(len(class_names)))
@@ -201,7 +204,7 @@ def plot_confusion_matrix_comparison(y_true, lite_preds, heavy_preds, dynamic_pr
     return fig
 
 
-def plot_value_added_bars(y_true, lite_preds, heavy_preds, dynamic_preds, class_names=None, route_mask=None):
+def plot_value_added_bars(y_true, lite_preds, heavy_preds, dynamic_preds, class_names=None, route_mask=None, ax=None):
     """
     Plot stacked bar chart showing value-added distribution per class.
     
@@ -217,6 +220,7 @@ def plot_value_added_bars(y_true, lite_preds, heavy_preds, dynamic_preds, class_
         class_names: List of class names. If None, uses config.CLASS_NAMES
         route_mask: Boolean array indicating which samples were routed to heavy model.
                    If None, will be calculated from predictions.
+        ax: Optional matplotlib axes. If None, a new figure is created.
     
     Returns:
         matplotlib.figure.Figure: Figure object with stacked bar chart
@@ -315,7 +319,10 @@ def plot_value_added_bars(y_true, lite_preds, heavy_preds, dynamic_preds, class_
         class_names_list.append(class_name)
     
     # Plot stacked bars (matching original colors exactly)
-    fig, ax = plt.subplots(1, 1, figsize=(14, 7))
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, figsize=(14, 7))
+    else:
+        fig = ax.get_figure()
     
     x = np.arange(len(class_names_list))
     width = 0.65
@@ -348,7 +355,7 @@ def plot_value_added_bars(y_true, lite_preds, heavy_preds, dynamic_preds, class_
     ax.set_xticks(x)
     ax.set_xticklabels(class_names_list)
     ax.set_ylim([0, 100])
-    ax.legend(loc='lower left', fontsize=9, framealpha=0.9)
+    ax.legend(loc='lower left', fontsize=9, framealpha=0.5)
     ax.grid(True, axis='y', alpha=0.3, linestyle='--')
     ax.set_axisbelow(True)
     
@@ -357,7 +364,7 @@ def plot_value_added_bars(y_true, lite_preds, heavy_preds, dynamic_preds, class_
     return fig
 
 
-def plot_risk_stratified_accuracy(y_true, lite_preds, heavy_preds, dynamic_preds, meta_df, risk_scaler=None):
+def plot_risk_stratified_accuracy(y_true, lite_preds, heavy_preds, dynamic_preds, meta_df, risk_scaler=None, ax=None):
     """
     Plot grouped bar chart comparing accuracy across risk groups.
     
@@ -371,6 +378,7 @@ def plot_risk_stratified_accuracy(y_true, lite_preds, heavy_preds, dynamic_preds
         dynamic_preds: Dynamic predictions (class indices or probabilities)
         meta_df: DataFrame with metadata (should have 'risk_score' or 'localization'/'age')
         risk_scaler: Optional MinMaxScaler for recalculating risk scores
+        ax: Optional matplotlib axes. If None, a new figure is created.
     
     Returns:
         matplotlib.figure.Figure: Figure object with grouped bar chart
@@ -431,7 +439,10 @@ def plot_risk_stratified_accuracy(y_true, lite_preds, heavy_preds, dynamic_preds
         dynamic_accuracies.append(dynamic_acc)
     
     # Plot grouped bar chart
-    fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+    else:
+        fig = ax.get_figure()
     
     x = np.arange(len(risk_groups))
     width = 0.25
@@ -449,8 +460,9 @@ def plot_risk_stratified_accuracy(y_true, lite_preds, heavy_preds, dynamic_preds
     ax.set_xticks(x)
     ax.set_xticklabels(risk_groups)
     ax.set_ylim([0, 1.0])
-    ax.legend(loc='lower left', fontsize=10)
+    ax.legend(loc='lower left', fontsize=10, framealpha=0.5)
     ax.grid(True, alpha=0.3, axis='y', linestyle='--')
+    ax.xaxis.grid(False)
     ax.set_axisbelow(True)
     
     # Add value labels on bars
@@ -466,7 +478,7 @@ def plot_risk_stratified_accuracy(y_true, lite_preds, heavy_preds, dynamic_preds
     return fig
 
 
-def plot_battery_decay(lite_joules, heavy_joules, routing_rate, capacity_joules=10000):
+def plot_battery_decay(lite_joules, heavy_joules, routing_rate, capacity_joules=10000, ax=None):
     """
     Plot battery decay curves for Pure Lite, Pure Heavy, and EcoFair systems.
     
@@ -478,6 +490,7 @@ def plot_battery_decay(lite_joules, heavy_joules, routing_rate, capacity_joules=
         heavy_joules: Energy consumption per sample for heavy model (Joules)
         routing_rate: Fraction of samples routed to heavy model (0-1)
         capacity_joules: Battery capacity in Joules (default: 10000)
+        ax: Optional matplotlib axes. If None, a new figure is created.
     
     Returns:
         matplotlib.figure.Figure: Figure object with battery decay plot
@@ -507,7 +520,10 @@ def plot_battery_decay(lite_joules, heavy_joules, routing_rate, capacity_joules=
     battery_ecofair = np.clip(battery_ecofair, 0, 100)
     
     # Plot
-    fig, ax = plt.subplots(1, 1, figsize=(12, 7))
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, figsize=(12, 7))
+    else:
+        fig = ax.get_figure()
     
     ax.plot(sample_range, battery_lite, color='skyblue', linewidth=2.5, label='Pure Lite',
            linestyle='-', marker='o', markersize=4, markevery=max(1, len(sample_range)//50))
@@ -524,8 +540,9 @@ def plot_battery_decay(lite_joules, heavy_joules, routing_rate, capacity_joules=
     ax.set_title('Battery Decay Comparison: Pure Lite vs Pure Heavy vs EcoFair',
                 fontsize=14, fontweight='normal', pad=15)
     ax.set_ylim([0, 100])
-    ax.legend(loc='upper right', fontsize=10)
-    ax.grid(True, alpha=0.3, linestyle='--')
+    ax.legend(loc='upper right', fontsize=10, framealpha=0.5)
+    ax.grid(True, alpha=0.3, axis='y', linestyle='--')
+    ax.xaxis.grid(False)
     ax.set_axisbelow(True)
     
     plt.tight_layout()
@@ -533,7 +550,7 @@ def plot_battery_decay(lite_joules, heavy_joules, routing_rate, capacity_joules=
     return fig
 
 
-def plot_routing_breakdown_doughnut(entropy, safe_danger_gap, route_mask, total_samples):
+def plot_routing_breakdown_doughnut(entropy, safe_danger_gap, route_mask, total_samples, ax=None):
     """
     Plot doughnut chart showing routing breakdown reasons.
     
@@ -545,6 +562,7 @@ def plot_routing_breakdown_doughnut(entropy, safe_danger_gap, route_mask, total_
         safe_danger_gap: Safe-danger gap values, shape (n_samples,)
         route_mask: Boolean array indicating which samples were routed to heavy
         total_samples: Total number of samples
+        ax: Optional matplotlib axes. If None, a new figure is created.
     
     Returns:
         matplotlib.figure.Figure: Figure object with doughnut chart
@@ -590,7 +608,10 @@ def plot_routing_breakdown_doughnut(entropy, safe_danger_gap, route_mask, total_
             uncertainty_pct = ambiguity_pct = safety_pct = multiple_pct = 0
     
     # Create doughnut chart
-    fig, ax = plt.subplots(1, 1, figsize=(10, 8))
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, figsize=(10, 8))
+    else:
+        fig = ax.get_figure()
     
     sizes = [uncertainty_pct, ambiguity_pct, safety_pct, multiple_pct]
     labels_donut = ['Uncertainty\n(Entropy)', 'Ambiguity\n(Safe-Danger Gap)', 'Safety\n(Patient Risk)', 'Multiple\nReasons']
@@ -696,6 +717,7 @@ def plot_classwise_accuracy_bars(y_true, lite_preds, heavy_preds, dynamic_preds,
         ax.set_title(title, fontsize=14, fontweight='normal', pad=15)
         ax.set_ylim([0, 1.0])
         ax.grid(True, alpha=0.3, axis='y', linestyle='--')
+        ax.xaxis.grid(False)
         ax.set_axisbelow(True)
         ax.set_xticks(range(len(class_names_list)))
         ax.set_xticklabels(class_names_list, rotation=0)
@@ -808,8 +830,9 @@ def plot_gender_age_accuracy(y_true, lite_preds, heavy_preds, dynamic_preds, met
     ax1.set_xticks(x_gender)
     ax1.set_xticklabels(gender_categories)
     ax1.set_ylim([0, 1.0])
-    ax1.legend(loc='lower right', fontsize=10)
+    ax1.legend(loc='lower right', fontsize=10, framealpha=0.5)
     ax1.grid(True, alpha=0.3, axis='y', linestyle='--')
+    ax1.xaxis.grid(False)
     ax1.set_axisbelow(True)
     
     for bars in [bars1, bars2, bars3]:
@@ -863,8 +886,9 @@ def plot_gender_age_accuracy(y_true, lite_preds, heavy_preds, dynamic_preds, met
     ax2.set_xticks(x_age)
     ax2.set_xticklabels(age_categories)
     ax2.set_ylim([0, 1.0])
-    ax2.legend(loc='lower right', fontsize=10)
+    ax2.legend(loc='lower right', fontsize=10, framealpha=0.5)
     ax2.grid(True, alpha=0.3, axis='y', linestyle='--')
+    ax2.xaxis.grid(False)
     ax2.set_axisbelow(True)
     
     for bars in [bars1_age, bars2_age, bars3_age]:
