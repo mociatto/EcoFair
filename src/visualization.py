@@ -23,6 +23,12 @@ except OSError:
     except OSError:
         plt.style.use('ggplot')
 
+# Force legend frame on (seaborn styles often set frameon=False)
+plt.rcParams['legend.frameon'] = True
+plt.rcParams['legend.framealpha'] = 1.0
+plt.rcParams['legend.edgecolor'] = 'black'
+plt.rcParams['legend.facecolor'] = 'white'
+
 
 def plot_metadata_distributions(meta_df, dataset_name='HAM10000'):
     """
@@ -89,9 +95,9 @@ def plot_metadata_distributions(meta_df, dataset_name='HAM10000'):
     
     ax1.set_title('Age Distribution and Malignancy Rate', fontsize=14, fontweight='normal', pad=20)
     leg1 = ax1.legend(loc='upper left', fontsize=10, frameon=True, framealpha=1.0, edgecolor='black', facecolor='white')
-    leg1.get_frame().set_linewidth(1.5)
+    leg1.get_frame().set_linewidth(2)
     leg1_twin = ax1_twin.legend(loc='upper right', fontsize=10, frameon=True, framealpha=1.0, edgecolor='black', facecolor='white')
-    leg1_twin.get_frame().set_linewidth(1.5)
+    leg1_twin.get_frame().set_linewidth(2)
     
     # Localization distribution
     ax2 = axes[1]
@@ -100,7 +106,7 @@ def plot_metadata_distributions(meta_df, dataset_name='HAM10000'):
     bars2 = ax2.bar(range(len(loc_counts)), loc_counts.values, alpha=0.7, color='lightgreen', label='Sample Count')
     ax2.set_ylim([0, 3000])
     ax2.set_xticks(range(len(loc_counts)))
-    ax2.set_xticklabels([loc.title() for loc in loc_counts.index], rotation=90, ha='right')
+    ax2.set_xticklabels([loc.title() fimage.pngor loc in loc_counts.index], rotation=90, ha='right')
     ax2.tick_params(axis='y', labelleft=False, left=False)
     ax2.grid(True, alpha=0.3, axis='y')
     ax2.xaxis.grid(False)
@@ -114,9 +120,9 @@ def plot_metadata_distributions(meta_df, dataset_name='HAM10000'):
     
     ax2.set_title('Localization Distribution and Malignancy Rate', fontsize=14, fontweight='normal', pad=20)
     leg2 = ax2.legend(loc='upper left', fontsize=10, frameon=True, framealpha=1.0, edgecolor='black', facecolor='white')
-    leg2.get_frame().set_linewidth(1.5)
+    leg2.get_frame().set_linewidth(2)
     leg2_twin = ax2_twin.legend(loc='upper right', fontsize=10, frameon=True, framealpha=1.0, edgecolor='black', facecolor='white')
-    leg2_twin.get_frame().set_linewidth(1.5)
+    leg2_twin.get_frame().set_linewidth(2)
     
     plt.tight_layout()
     
@@ -362,7 +368,7 @@ def plot_value_added_bars(y_true, lite_preds, heavy_preds, dynamic_preds, class_
     ax.set_xticklabels(class_names_list)
     ax.set_ylim([0, 100])
     leg = ax.legend(loc='lower left', fontsize=9, frameon=True, framealpha=1.0, edgecolor='black', facecolor='white')
-    leg.get_frame().set_linewidth(1.5)
+    leg.get_frame().set_linewidth(2)
     ax.grid(True, axis='y', alpha=0.3, linestyle='--')
     ax.set_axisbelow(True)
     
@@ -468,7 +474,7 @@ def plot_risk_stratified_accuracy(y_true, lite_preds, heavy_preds, dynamic_preds
     ax.set_xticklabels(risk_groups)
     ax.set_ylim([0, 1.0])
     leg = ax.legend(loc='lower left', fontsize=10, frameon=True, framealpha=1.0, edgecolor='black', facecolor='white')
-    leg.get_frame().set_linewidth(1.5)
+    leg.get_frame().set_linewidth(2)
     ax.grid(True, alpha=0.3, axis='y', linestyle='--')
     ax.xaxis.grid(False)
     ax.set_axisbelow(True)
@@ -549,7 +555,7 @@ def plot_battery_decay(lite_joules, heavy_joules, routing_rate, capacity_joules=
                 fontsize=14, fontweight='normal', pad=15)
     ax.set_ylim([0, 100])
     leg = ax.legend(loc='upper right', fontsize=10, frameon=True, framealpha=1.0, edgecolor='black', facecolor='white')
-    leg.get_frame().set_linewidth(1.5)
+    leg.get_frame().set_linewidth(2)
     ax.grid(True, alpha=0.3, axis='y', linestyle='--')
     ax.xaxis.grid(False)
     ax.set_axisbelow(True)
@@ -845,7 +851,7 @@ def plot_gender_age_accuracy(y_true, lite_preds, heavy_preds, dynamic_preds, met
     ax1.set_xticklabels(gender_categories)
     ax1.set_ylim([0, 1.0])
     leg1 = ax1.legend(loc='lower right', fontsize=10, frameon=True, framealpha=1.0, edgecolor='black', facecolor='white')
-    leg1.get_frame().set_linewidth(1.5)
+    leg1.get_frame().set_linewidth(2)
     ax1.grid(True, alpha=0.3, axis='y', linestyle='--')
     ax1.xaxis.grid(False)
     ax1.set_axisbelow(True)
@@ -902,7 +908,7 @@ def plot_gender_age_accuracy(y_true, lite_preds, heavy_preds, dynamic_preds, met
     ax2.set_xticklabels(age_categories)
     ax2.set_ylim([0, 1.0])
     leg2 = ax2.legend(loc='lower right', fontsize=10, frameon=True, framealpha=1.0, edgecolor='black', facecolor='white')
-    leg2.get_frame().set_linewidth(1.5)
+    leg2.get_frame().set_linewidth(2)
     ax2.grid(True, alpha=0.3, axis='y', linestyle='--')
     ax2.xaxis.grid(False)
     ax2.set_axisbelow(True)
