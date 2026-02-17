@@ -229,21 +229,39 @@ if joules_per_heavy is None:
     joules_per_heavy = 2.5
 routing_rate = route_mask_ham.sum() / len(route_mask_ham)
 
-fig_comprehensive, axes_comprehensive = plt.subplots(2, 2, figsize=(16, 12))
-visualization.plot_gender_age_accuracy(
-    y_true_test, lite_preds_test, heavy_preds_test, final_preds_ham, meta_test,
-    axes=(axes_comprehensive[0, 0], axes_comprehensive[0, 1])
-)
-visualization.plot_risk_stratified_accuracy(
-    y_true_test, lite_preds_test, heavy_preds_test, final_preds_ham, meta_test,
-    risk_scaler=risk_scaler, ax=axes_comprehensive[1, 0]
-)
-visualization.plot_battery_decay(
-    joules_per_lite, joules_per_heavy, routing_rate, capacity_joules=10000,
-    ax=axes_comprehensive[1, 1]
-)
-plt.tight_layout()
-plt.show()
+# Use 2x2 layout if plot_gender_age_accuracy supports axes; else fallback to 2 separate figures
+try:
+    fig_comprehensive, axes_comprehensive = plt.subplots(2, 2, figsize=(16, 12))
+    visualization.plot_gender_age_accuracy(
+        y_true_test, lite_preds_test, heavy_preds_test, final_preds_ham, meta_test,
+        axes=(axes_comprehensive[0, 0], axes_comprehensive[0, 1])
+    )
+    visualization.plot_risk_stratified_accuracy(
+        y_true_test, lite_preds_test, heavy_preds_test, final_preds_ham, meta_test,
+        risk_scaler=risk_scaler, ax=axes_comprehensive[1, 0]
+    )
+    visualization.plot_battery_decay(
+        joules_per_lite, joules_per_heavy, routing_rate, capacity_joules=10000,
+        ax=axes_comprehensive[1, 1]
+    )
+    plt.tight_layout()
+    plt.show()
+except TypeError:
+    fig_gender_age = visualization.plot_gender_age_accuracy(
+        y_true_test, lite_preds_test, heavy_preds_test, final_preds_ham, meta_test
+    )
+    plt.show()
+    fig_risk_battery, axes_risk_battery = plt.subplots(1, 2, figsize=(20, 6))
+    visualization.plot_risk_stratified_accuracy(
+        y_true_test, lite_preds_test, heavy_preds_test, final_preds_ham, meta_test,
+        risk_scaler=risk_scaler, ax=axes_risk_battery[0]
+    )
+    visualization.plot_battery_decay(
+        joules_per_lite, joules_per_heavy, routing_rate, capacity_joules=10000,
+        ax=axes_risk_battery[1]
+    )
+    plt.tight_layout()
+    plt.show()
 
 # %% Fairness Analysis
 print("\nGenerating fairness analysis...")
