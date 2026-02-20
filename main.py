@@ -300,18 +300,31 @@ print("\nFairness Metrics across Demographic Subgroups and Classes:")
 pd.set_option('display.max_rows', None)
 pd.set_option('display.float_format', '{:.4f}'.format)
 
-required_cols = ['Subgroup', 'Class', 'Equal_Opportunity_TPR', 'Demographic_Parity_Rate']
+required_cols = ['Subgroup', 'Class', 'Count', 'Accuracy', 'Equal_Opportunity_TPR', 'Demographic_Parity_Rate']
 if fairness_df.empty or not all(c in fairness_df.columns for c in required_cols):
     print("No fairness data (empty or missing age/sex subgroups). Raw report:")
     print(fairness_df)
 else:
-    # Pivot table for better readability: Rows = Subgroups, Columns = Classes, Values = Equal Opportunity (TPR)
+    # Inject sample size into Subgroup label: "Age <30" -> "Age <30 (n=213)"
+    fairness_df = fairness_df.copy()
+    fairness_df['Subgroup'] = fairness_df.apply(
+        lambda r: f"{r['Subgroup']} (n={int(r['Count'])})", axis=1
+    )
+
+    # 1. Subgroup Accuracy
+    print("\n--- Subgroup Accuracy ---")
+    pivot_acc = fairness_df.pivot(index='Subgroup', columns='Class', values='Accuracy')
+    print(pivot_acc.fillna('-'))
+
+    # 2. Equal Opportunity (TPR) - use '-' for NaN (lack of data, not model failure)
     print("\n--- Equal Opportunity (True Positive Rate) ---")
     print("Goal: TPR should be roughly equal across subgroups for the same class.")
+    print("'-' indicates no actual cases of that class in the subgroup.")
     pivot_tpr = fairness_df.pivot(index='Subgroup', columns='Class', values='Equal_Opportunity_TPR')
-    print(pivot_tpr)
+    print(pivot_tpr.fillna('-'))
 
+    # 3. Demographic Parity
     print("\n--- Demographic Parity (Positive Prediction Rate) ---")
     print("Measures the raw rate at which a class is predicted for a specific subgroup.")
     pivot_dp = fairness_df.pivot(index='Subgroup', columns='Class', values='Demographic_Parity_Rate')
-    print(pivot_dp)
+    print(pivot_dp.fillna('-'))

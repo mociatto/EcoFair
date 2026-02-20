@@ -22,11 +22,11 @@ def calculate_equal_opportunity(tp, fn):
     """
     Equal Opportunity (True Positive Rate): TP / (TP + FN).
     
-    Returns 0 if denominator is 0.
+    Returns np.nan if denominator is 0 (no actual cases of this class in subgroup).
     """
     denom = tp + fn
     if denom == 0:
-        return 0.0
+        return np.nan
     return tp / denom
 
 
@@ -34,11 +34,11 @@ def calculate_demographic_parity(tp, fp, tn, fn):
     """
     Demographic Parity (Positive Prediction Rate): (TP + FP) / (TP + TN + FP + FN).
     
-    Returns 0 if denominator is 0.
+    Returns np.nan if denominator is 0 (no data).
     """
     denom = tp + tn + fp + fn
     if denom == 0:
-        return 0.0
+        return np.nan
     return (tp + fp) / denom
 
 
@@ -46,11 +46,11 @@ def calculate_subgroup_accuracy(tp, fp, tn, fn):
     """
     Subgroup Accuracy: (TP + TN) / (TP + TN + FP + FN).
     
-    Returns 0 if denominator is 0.
+    Returns np.nan if denominator is 0 (no data).
     """
     denom = tp + tn + fp + fn
     if denom == 0:
-        return 0.0
+        return np.nan
     return (tp + tn) / denom
 
 
