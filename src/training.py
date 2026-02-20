@@ -85,7 +85,8 @@ def get_class_weights(y_train, class_names=None):
 
 def run_cv_pipeline(X_heavy, X_lite, X_tab, y, meta_df, n_splits=5, risk_scaler=None,
                     routing_strategy='threshold', budget=0.35,
-                    class_names=None, safe_classes=None, dangerous_classes=None):
+                    class_names=None, safe_classes=None, dangerous_classes=None,
+                    dataset_name='HAM10000'):
     """
     Run 5-Fold Stratified Group Cross-Validation with Out-of-Fold (OOF) tracking.
     
@@ -105,6 +106,7 @@ def run_cv_pipeline(X_heavy, X_lite, X_tab, y, meta_df, n_splits=5, risk_scaler=
         class_names: Class names for routing gap calculation. Defaults to config.CLASS_NAMES.
         safe_classes: Safe class names. Defaults to config.SAFE_CLASSES.
         dangerous_classes: Dangerous class names. Defaults to config.DANGEROUS_CLASSES.
+        dataset_name: Dataset name for loading correct energy stats (default: 'HAM10000').
     
     Returns:
         tuple: (fold_metrics, oof_lite, oof_heavy, oof_dynamic, route_mask_oof, route_components_oof)
@@ -138,8 +140,8 @@ def run_cv_pipeline(X_heavy, X_lite, X_tab, y, meta_df, n_splits=5, risk_scaler=
         'routing_rate': [], 'energy_cost': []
     }
     
-    joules_lite = utils.load_energy_stats(config.SELECTED_LITE_MODEL, is_heavy=False)
-    joules_heavy = utils.load_energy_stats(config.SELECTED_HEAVY_MODEL, is_heavy=True)
+    joules_lite  = utils.load_energy_stats(config.SELECTED_LITE_MODEL,  is_heavy=False, dataset_name=dataset_name)
+    joules_heavy = utils.load_energy_stats(config.SELECTED_HEAVY_MODEL, is_heavy=True,  dataset_name=dataset_name)
     if joules_lite is None:
         joules_lite = 1.0
     if joules_heavy is None:

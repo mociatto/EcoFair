@@ -31,18 +31,25 @@ def set_seed(seed: int = None) -> None:
     tf.random.set_seed(seed)
 
 
-def load_energy_stats(model_name: str, is_heavy: bool = True):
+def load_energy_stats(model_name: str, is_heavy: bool = True, dataset_name: str = 'HAM10000'):
     """
-    Load energy statistics for a given model.
+    Load energy statistics for a given model and dataset.
     
     Args:
         model_name: Name of the model (e.g., 'ResNet50', 'MobileNetV3Small')
         is_heavy: Whether the model is heavy (True) or lite (False)
+        dataset_name: Dataset to load stats for ('HAM10000', 'PAD-UFES-20', etc.)
     
     Returns:
         joules_per_sample: Energy consumption in Joules per sample, or None if not found
     """
-    base_dir = config.HEAVY_FEATURE_ROOT if is_heavy else config.LITE_FEATURE_ROOT
+    if dataset_name == 'PAD-UFES-20':
+        base_dir = config.PAD_HEAVY_FEATURE_ROOT if is_heavy else config.PAD_LITE_FEATURE_ROOT
+    else:
+        base_dir = config.HEAVY_FEATURE_ROOT if is_heavy else config.LITE_FEATURE_ROOT
+        # For datasets other than HAM/PAD, substitute dataset name in the HAM root path
+        if dataset_name != 'HAM10000':
+            base_dir = base_dir.replace('HAM10000', dataset_name)
     energy_path = os.path.join(base_dir, model_name, 'energy_stats.json')
     
     if not os.path.exists(energy_path):

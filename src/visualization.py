@@ -24,7 +24,7 @@ plt.rcParams['legend.edgecolor'] = 'black'
 plt.rcParams['legend.facecolor'] = 'white'
 
 
-def plot_metadata_distributions(meta_df, dataset_name='HAM10000'):
+def plot_metadata_distributions(meta_df, dataset_name='HAM10000', dangerous_classes=None):
     """
     Plot metadata distributions with malignancy rate overlays.
     
@@ -33,56 +33,91 @@ def plot_metadata_distributions(meta_df, dataset_name='HAM10000'):
     with Malignancy Rates overlay.
     
     Args:
-        meta_df: DataFrame with metadata columns ('age', 'localization', 'dx')
+        meta_df: DataFrame with metadata columns (age, localization/region, dx/diagnostic/diagnosis)
         dataset_name: Name of dataset (for title)
+        dangerous_classes: List of class names considered malignant.
+                           Defaults to config.DANGEROUS_CLASSES if None.
     
     Returns:
         matplotlib.figure.Figure: Figure object with two subplots
     """
+    if dangerous_classes is None:
+        dangerous_classes = config.DANGEROUS_CLASSES
+    
     meta_df_copy = meta_df.copy()
     
-    # Create malignant indicator
-    if 'dx' in meta_df_copy.columns:
-        meta_df_copy['is_malignant'] = meta_df_copy['dx'].isin(config.DANGEROUS_CLASSES).astype(int)
+    # Detect diagnosis column dynamically
+    dx_col = None
+    for col in ['dx', 'diagnostic', 'diagnosis']:
+        if col in meta_df_copy.columns:
+            dx_col = col
+            break
+    
+    if dx_col is not None:
+        meta_df_copy['is_malignant'] = (
+            meta_df_copy[dx_col].astype(str).str.lower().str.strip()
+            .isin([c.lower() for c in dangerous_classes])
+        ).astype(int)
     else:
         meta_df_copy['is_malignant'] = 0
     
-    # Age bins
-    age_bins = np.arange(0, 101, 10)
-    meta_df_copy['age_bin'] = pd.cut(
-        meta_df_copy['age'],
-        bins=age_bins,
-        labels=[f"{int(age_bins[i])}-{int(age_bins[i+1])}" for i in range(len(age_bins)-1)],
-        include_lowest=True
-    )
+    # Detect localization column dynamically
+    loc_col = None
+    for col in ['localization', 'region', 'lesion_location', 'anatom_site']:
+        if col in meta_df_copy.columns:
+            loc_col = col
+            break
+    if loc_col is None:
+        meta_df_copy['_loc'] = 'unknown'
+        loc_col = '_loc'
     
-    age_counts = meta_df_copy.groupby('age_bin', observed=True).size()
-    age_malignancy_rate = meta_df_copy.groupby('age_bin', observed=True)['is_malignant'].mean() * 100
+    # Age bins — handle missing or non-numeric age gracefully
+    age_col = 'age' if 'age' in meta_df_copy.columns else None
+    if age_col is not None:
+        meta_df_copy[age_col] = pd.to_numeric(meta_df_copy[age_col], errors='coerce')
+        age_bins = np.arange(0, 101, 10)
+        meta_df_copy['age_bin'] = pd.cut(
+            meta_df_copy[age_col],
+            bins=age_bins,
+            labels=[f"{int(age_bins[i])}-{int(age_bins[i+1])}" for i in range(len(age_bins)-1)],
+            include_lowest=True
+        )
+        age_counts = meta_df_copy.groupby('age_bin', observed=True).size()
+        age_malignancy_rate = meta_df_copy.groupby('age_bin', observed=True)['is_malignant'].mean() * 100
+    else:
+        age_counts = pd.Series({'N/A': len(meta_df_copy)})
+        age_malignancy_rate = pd.Series({'N/A': meta_df_copy['is_malignant'].mean() * 100})
     
     # Localization
-    loc_malignancy_rate = meta_df_copy.groupby('localization')['is_malignant'].mean() * 100
+    loc_malignancy_rate = meta_df_copy.groupby(loc_col)['is_malignant'].mean() * 100
     loc_malignancy_rate = loc_malignancy_rate.sort_values(ascending=True)
-    loc_counts = meta_df_copy.groupby('localization').size()
-    loc_counts = loc_counts.reindex(loc_malignancy_rate.index)
+    loc_counts = meta_df_copy.groupby(loc_col).size().reindex(loc_malignancy_rate.index)
+    
+    # Dynamic y-axis ceiling (round up to nearest 500 above max count)
+    max_age_count = int(age_counts.max()) if len(age_counts) > 0 else 100
+    max_loc_count = int(loc_counts.max()) if len(loc_counts) > 0 else 100
+    age_ylim = max(500, ((max_age_count // 500) + 1) * 500)
+    loc_ylim = max(500, ((max_loc_count // 500) + 1) * 500)
     
     # Create figure
     fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+    fig.suptitle(f'{dataset_name} — Metadata Distributions', fontsize=15, fontweight='normal', y=1.01)
     
     # Age distribution
     ax1 = axes[0]
     ax1_twin = ax1.twinx()
     
-    bars1 = ax1.bar(range(len(age_counts)), age_counts.values, alpha=0.7, color='skyblue', label='Sample Count')
+    ax1.bar(range(len(age_counts)), age_counts.values, alpha=0.7, color='skyblue', label='Sample Count')
     ax1.set_ylabel('Number of Samples', fontsize=12, fontweight='normal')
-    ax1.set_ylim([0, 3000])
+    ax1.set_ylim([0, age_ylim])
     ax1.set_xticks(range(len(age_counts)))
     ax1.set_xticklabels(age_counts.index, rotation=90, ha='right')
     ax1.tick_params(axis='y')
     ax1.grid(True, alpha=0.3, axis='y')
     ax1.xaxis.grid(False)
     
-    line1 = ax1_twin.plot(range(len(age_malignancy_rate)), age_malignancy_rate.values,
-                          color='orangered', marker='o', linewidth=2, markersize=8, label='Malignancy Rate')
+    ax1_twin.plot(range(len(age_malignancy_rate)), age_malignancy_rate.values,
+                  color='orangered', marker='o', linewidth=2, markersize=8, label='Malignancy Rate')
     ax1_twin.set_ylim([0, 100])
     ax1_twin.tick_params(axis='y', labelleft=False, left=False, labelright=False, right=False)
     ax1_twin.grid(False)
@@ -95,16 +130,16 @@ def plot_metadata_distributions(meta_df, dataset_name='HAM10000'):
     ax2 = axes[1]
     ax2_twin = ax2.twinx()
     
-    bars2 = ax2.bar(range(len(loc_counts)), loc_counts.values, alpha=0.7, color='lightgreen', label='Sample Count')
-    ax2.set_ylim([0, 3000])
+    ax2.bar(range(len(loc_counts)), loc_counts.values, alpha=0.7, color='lightgreen', label='Sample Count')
+    ax2.set_ylim([0, loc_ylim])
     ax2.set_xticks(range(len(loc_counts)))
-    ax2.set_xticklabels([loc.title() for loc in loc_counts.index], rotation=90, ha='right')
+    ax2.set_xticklabels([str(loc).title() for loc in loc_counts.index], rotation=90, ha='right')
     ax2.tick_params(axis='y', labelleft=False, left=False)
     ax2.grid(True, alpha=0.3, axis='y')
     ax2.xaxis.grid(False)
     
-    line2 = ax2_twin.plot(range(len(loc_malignancy_rate)), loc_malignancy_rate.values,
-                          color='orangered', marker='o', linewidth=2, markersize=8, label='Malignancy Rate')
+    ax2_twin.plot(range(len(loc_malignancy_rate)), loc_malignancy_rate.values,
+                  color='orangered', marker='o', linewidth=2, markersize=8, label='Malignancy Rate')
     ax2_twin.set_ylabel('Malignancy Rate (%)', fontsize=12, fontweight='normal')
     ax2_twin.tick_params(axis='y')
     ax2_twin.set_ylim([0, 100])
