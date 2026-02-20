@@ -32,11 +32,9 @@ def load_client_features(model_name: str, is_heavy: bool = True, dataset_name: s
     if dataset_name == 'HAM10000':
         base_dir = config.HEAVY_FEATURE_ROOT if is_heavy else config.LITE_FEATURE_ROOT
     elif dataset_name == 'PAD-UFES-20':
-        # Construct PAD paths from HAM paths by replacing dataset name
-        ham_base = config.HEAVY_FEATURE_ROOT if is_heavy else config.LITE_FEATURE_ROOT
-        base_dir = ham_base.replace('HAM10000', 'PAD-UFES-20')
+        base_dir = config.PAD_HEAVY_FEATURE_ROOT if is_heavy else config.PAD_LITE_FEATURE_ROOT
     else:
-        # Generic: construct path from base structure
+        # Generic: derive from HAM root by substituting dataset name
         ham_base = config.HEAVY_FEATURE_ROOT if is_heavy else config.LITE_FEATURE_ROOT
         base_dir = ham_base.replace('HAM10000', dataset_name)
     
