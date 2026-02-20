@@ -105,29 +105,23 @@ def generate_fairness_report(y_true, y_pred, meta_df, class_names=None):
     y_pred = _ensure_1d_class_indices(y_pred)
     
     meta_df_copy = meta_df.copy()
+    col_map = {c.lower(): c for c in meta_df_copy.columns}
     
     # Age subgroups: <30, 30-60, 60+
-    age_col = None
-    for c in ['age', 'Age']:
-        if c in meta_df_copy.columns:
-            age_col = c
-            break
+    age_col = col_map.get('age')
     if age_col is not None:
+        age_vals = pd.to_numeric(meta_df_copy[age_col], errors='coerce').fillna(0).clip(lower=0)
         meta_df_copy['_age_bin'] = pd.cut(
-            meta_df_copy[age_col].fillna(0),
+            age_vals,
             bins=[0, 30, 60, 200],
             labels=['<30', '30-60', '60+'],
             include_lowest=True
-        )
+        ).astype(str)
     else:
         meta_df_copy['_age_bin'] = 'Unknown'
     
     # Sex subgroups: Male, Female
-    sex_col = None
-    for c in ['sex', 'gender', 'Sex', 'Gender']:
-        if c in meta_df_copy.columns:
-            sex_col = c
-            break
+    sex_col = col_map.get('sex') or col_map.get('gender')
     if sex_col is not None:
         s = meta_df_copy[sex_col].astype(str).str.lower().str.strip()
         meta_df_copy['_sex_norm'] = s.map({
@@ -141,14 +135,14 @@ def generate_fairness_report(y_true, y_pred, meta_df, class_names=None):
     
     # Build subgroup list
     subgroups = []
-    if '_age_bin' in meta_df_copy.columns:
-        for v in ['<30', '30-60', '60+']:
-            if (meta_df_copy['_age_bin'] == v).any():
-                subgroups.append((f"Age {v}", meta_df_copy['_age_bin'] == v))
-    if '_sex_norm' in meta_df_copy.columns:
-        for v in ['Male', 'Female']:
-            if (meta_df_copy['_sex_norm'] == v).any():
-                subgroups.append((f"Sex: {v}", meta_df_copy['_sex_norm'] == v))
+    for v in ['<30', '30-60', '60+']:
+        mask = meta_df_copy['_age_bin'].astype(str) == v
+        if mask.any():
+            subgroups.append((f"Age {v}", mask))
+    for v in ['Male', 'Female']:
+        mask = meta_df_copy['_sex_norm'].astype(str) == v
+        if mask.any():
+            subgroups.append((f"Sex: {v}", mask))
     
     for subgroup_name, mask in subgroups:
         mask = mask.values if hasattr(mask, 'values') else mask
@@ -171,4 +165,7 @@ def generate_fairness_report(y_true, y_pred, meta_df, class_names=None):
                 'Equal_Opportunity_TPR': tpr
             })
     
+    columns = ['Subgroup', 'Class', 'Count', 'Accuracy', 'Demographic_Parity_Rate', 'Equal_Opportunity_TPR']
+    if not results:
+        return pd.DataFrame(columns=columns)
     return pd.DataFrame(results)

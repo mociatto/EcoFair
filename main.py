@@ -300,13 +300,18 @@ print("\nFairness Metrics across Demographic Subgroups and Classes:")
 pd.set_option('display.max_rows', None)
 pd.set_option('display.float_format', '{:.4f}'.format)
 
-# Pivot table for better readability: Rows = Subgroups, Columns = Classes, Values = Equal Opportunity (TPR)
-print("\n--- Equal Opportunity (True Positive Rate) ---")
-print("Goal: TPR should be roughly equal across subgroups for the same class.")
-pivot_tpr = fairness_df.pivot(index='Subgroup', columns='Class', values='Equal_Opportunity_TPR')
-print(pivot_tpr)
+required_cols = ['Subgroup', 'Class', 'Equal_Opportunity_TPR', 'Demographic_Parity_Rate']
+if fairness_df.empty or not all(c in fairness_df.columns for c in required_cols):
+    print("No fairness data (empty or missing age/sex subgroups). Raw report:")
+    print(fairness_df)
+else:
+    # Pivot table for better readability: Rows = Subgroups, Columns = Classes, Values = Equal Opportunity (TPR)
+    print("\n--- Equal Opportunity (True Positive Rate) ---")
+    print("Goal: TPR should be roughly equal across subgroups for the same class.")
+    pivot_tpr = fairness_df.pivot(index='Subgroup', columns='Class', values='Equal_Opportunity_TPR')
+    print(pivot_tpr)
 
-print("\n--- Demographic Parity (Positive Prediction Rate) ---")
-print("Measures the raw rate at which a class is predicted for a specific subgroup.")
-pivot_dp = fairness_df.pivot(index='Subgroup', columns='Class', values='Demographic_Parity_Rate')
-print(pivot_dp)
+    print("\n--- Demographic Parity (Positive Prediction Rate) ---")
+    print("Measures the raw rate at which a class is predicted for a specific subgroup.")
+    pivot_dp = fairness_df.pivot(index='Subgroup', columns='Class', values='Demographic_Parity_Rate')
+    print(pivot_dp)
