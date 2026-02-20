@@ -240,7 +240,10 @@ def run_cv_pipeline(X_heavy, X_lite, X_tab, y, meta_df, n_splits=5, risk_scaler=
                 gap_threshold=optimal_config['gap_t'],
                 heavy_weight=optimal_config['heavy_weight'],
                 patient_risk=patient_risk,
-                safety_threshold=0.75
+                safety_threshold=0.75,
+                class_names=class_names,
+                safe_classes=safe_classes,
+                danger_classes=danger_classes,
             )
         
         acc_lite = accuracy_score(y_true_test, np.argmax(lite_preds_test, axis=1))

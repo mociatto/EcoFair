@@ -13,23 +13,90 @@ from tensorflow import keras
 from . import config
 
 
-def get_sun_exposure_score(localization: str) -> float:
+def compute_localization_risk_scores(meta_df: pd.DataFrame, dangerous_classes=None) -> dict:
     """
-    Calculate sun exposure risk score based on body part localization.
+    Empirically derive localization risk scores from a dataset's malignancy rates.
+    
+    For each localization site, computes the fraction of samples that belong to a dangerous
+    (malignant) class, then normalises those fractions to [0, 1] with min-max scaling.
+    This is the principled approach that reproduces the HAM10000 hardcoded values when
+    called on HAM data, and generalises to any other dataset automatically.
+    
+    Args:
+        meta_df: DataFrame with diagnosis and localization columns
+        dangerous_classes: List of class names considered malignant.
+                           Defaults to config.DANGEROUS_CLASSES if None.
+    
+    Returns:
+        dict: {localization_site (lowercase): risk_score [0,1]}
+    """
+    if dangerous_classes is None:
+        dangerous_classes = config.DANGEROUS_CLASSES
+    
+    df = meta_df.copy()
+    
+    # Detect diagnosis column
+    dx_col = None
+    for col in ['dx', 'diagnostic', 'diagnosis', 'label']:
+        if col in df.columns:
+            dx_col = col
+            break
+    
+    # Detect localization column
+    loc_col = None
+    for col in ['localization', 'region', 'lesion_location', 'anatom_site']:
+        if col in df.columns:
+            loc_col = col
+            break
+    if loc_col is None:
+        for col in df.columns:
+            if col.lower() in ['localization', 'region', 'lesion_location', 'anatom_site']:
+                loc_col = col
+                break
+    
+    if dx_col is None or loc_col is None:
+        print("Warning: Cannot compute localization risk scores — diagnosis or localization column missing.")
+        return dict(config.LOCALIZATION_RISK_SCORES)
+    
+    dangerous_set = {c.lower().strip() for c in dangerous_classes}
+    df['_is_malignant'] = df[dx_col].astype(str).str.lower().str.strip().isin(dangerous_set).astype(float)
+    df['_loc'] = df[loc_col].astype(str).str.lower().str.strip()
+    
+    # Malignancy rate per site (raw, in [0, 1])
+    rates = df.groupby('_loc')['_is_malignant'].mean()
+    
+    # Min-max normalise so the most malignant site scores 1.0 and the safest scores 0.0
+    # (Identical to what was done manually for HAM10000 in config.py)
+    r_min, r_max = rates.min(), rates.max()
+    if r_max > r_min:
+        scores = ((rates - r_min) / (r_max - r_min)).round(2)
+    else:
+        scores = rates.copy()
+    
+    return scores.to_dict()
+
+
+def get_sun_exposure_score(localization: str, risk_scores: dict = None) -> float:
+    """
+    Look up the sun/malignancy exposure risk score for a body part.
     
     Args:
         localization: String representing body part/location
+        risk_scores: Optional dict {site: score}. Falls back to config.LOCALIZATION_RISK_SCORES.
     
     Returns:
-        float: Risk score from config.LOCALIZATION_RISK_SCORES, or 0.04 (default) if not found
+        float: Risk score, or the median of the provided dict (or 0.04) if not found
     """
+    if risk_scores is None:
+        risk_scores = config.LOCALIZATION_RISK_SCORES
     if localization is None or not isinstance(localization, str):
-        return 0.04
+        return float(np.median(list(risk_scores.values()))) if risk_scores else 0.04
     loc_normalized = localization.strip().lower()
-    return config.LOCALIZATION_RISK_SCORES.get(loc_normalized, 0.04)
+    default = float(np.median(list(risk_scores.values()))) if risk_scores else 0.04
+    return risk_scores.get(loc_normalized, default)
 
 
-def prepare_tabular_features(meta_df: pd.DataFrame):
+def prepare_tabular_features(meta_df: pd.DataFrame, localization_risk_scores: dict = None):
     """
     Process raw metadata into numeric tabular features for the model.
     
@@ -46,6 +113,8 @@ def prepare_tabular_features(meta_df: pd.DataFrame):
     
     Args:
         meta_df: DataFrame with metadata columns
+        localization_risk_scores: Optional dict {site: score} from compute_localization_risk_scores.
+                                   Falls back to config.LOCALIZATION_RISK_SCORES if None.
     
     Returns:
         tuple: (tabular_features, scaler, sex_encoder, loc_encoder, risk_scaler)
@@ -96,7 +165,9 @@ def prepare_tabular_features(meta_df: pd.DataFrame):
         loc_col_for_risk = 'localization'
     
     # Step B: Neurosymbolic Risk Scoring
-    sun_exposure_rate = meta_df_copy[loc_col_for_risk].apply(get_sun_exposure_score).values
+    sun_exposure_rate = meta_df_copy[loc_col_for_risk].apply(
+        lambda loc: get_sun_exposure_score(loc, localization_risk_scores)
+    ).values
     raw_risk = sun_exposure_rate * age_values
     
     risk_scaler = MinMaxScaler()
@@ -184,7 +255,8 @@ def prepare_labels(meta_df: pd.DataFrame, class_names=None):
     return y, dx_to_idx
 
 
-def calculate_cumulative_risk(meta_df: pd.DataFrame, risk_scaler: MinMaxScaler):
+def calculate_cumulative_risk(meta_df: pd.DataFrame, risk_scaler: MinMaxScaler,
+                              localization_risk_scores: dict = None):
     """
     Re-calculate risk scores for test sets using a pre-fitted scaler.
     
@@ -217,7 +289,9 @@ def calculate_cumulative_risk(meta_df: pd.DataFrame, risk_scaler: MinMaxScaler):
         print("Warning: Could not find localization column. Using default risk score 0.04.")
         sun_exposure_rate = np.full(len(meta_df), 0.04)
     else:
-        sun_exposure_rate = meta_df[loc_col_for_risk].apply(get_sun_exposure_score).values
+        sun_exposure_rate = meta_df[loc_col_for_risk].apply(
+            lambda loc: get_sun_exposure_score(loc, localization_risk_scores)
+        ).values
     
     # Get age values (fill with 0 if missing)
     age_values = meta_df['age'].values if 'age' in meta_df.columns else np.zeros(len(meta_df))
