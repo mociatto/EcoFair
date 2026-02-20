@@ -83,12 +83,13 @@ def get_class_weights(y_train, class_names=None):
     return class_weight_dict
 
 
-def run_cv_pipeline(X_heavy, X_lite, X_tab, y, meta_df, n_splits=5, risk_scaler=None):
+def run_cv_pipeline(X_heavy, X_lite, X_tab, y, meta_df, n_splits=5, risk_scaler=None,
+                    routing_strategy='threshold', budget=0.35,
+                    class_names=None, safe_classes=None, dangerous_classes=None):
     """
     Run 5-Fold Stratified Group Cross-Validation with Out-of-Fold (OOF) tracking.
     
-    For each fold: train lite/heavy models, optimize routing thresholds on test fold,
-    apply routing, compute metrics, and store OOF predictions.
+    For each fold: train lite/heavy models, apply routing, compute metrics, store OOF predictions.
     
     Args:
         X_heavy: Heavy model features, shape (n_samples, feature_dim)
@@ -98,6 +99,12 @@ def run_cv_pipeline(X_heavy, X_lite, X_tab, y, meta_df, n_splits=5, risk_scaler=
         meta_df: Metadata DataFrame (aligned with features)
         n_splits: Number of CV folds (default: 5)
         risk_scaler: Pre-fitted MinMaxScaler for risk scores. If None, uses fallback.
+        routing_strategy: 'threshold' (SafetyFirstOptimizer, for HAM) or
+                          'budget' (fixed 35% budget routing, for domain-shifted datasets)
+        budget: Fraction of samples routed to heavy under budget routing (default: 0.35)
+        class_names: Class names for routing gap calculation. Defaults to config.CLASS_NAMES.
+        safe_classes: Safe class names. Defaults to config.SAFE_CLASSES.
+        dangerous_classes: Dangerous class names. Defaults to config.DANGEROUS_CLASSES.
     
     Returns:
         tuple: (fold_metrics, oof_lite, oof_heavy, oof_dynamic, route_mask_oof, route_components_oof)
@@ -107,6 +114,13 @@ def run_cv_pipeline(X_heavy, X_lite, X_tab, y, meta_df, n_splits=5, risk_scaler=
             - route_components_oof: dict with uncertainty, ambiguity, safety masks
     """
     from . import data_loader, models, routing, features, utils
+    
+    if class_names is None:
+        class_names = config.CLASS_NAMES
+    if safe_classes is None:
+        safe_classes = config.SAFE_CLASSES
+    if dangerous_classes is None:
+        dangerous_classes = config.DANGEROUS_CLASSES
     
     n_samples, n_classes = y.shape
     oof_lite = np.zeros_like(y, dtype=np.float32)
@@ -177,37 +191,55 @@ def run_cv_pipeline(X_heavy, X_lite, X_tab, y, meta_df, n_splits=5, risk_scaler=
         heavy_preds_test = heavy_model.predict([X_heavy_test, X_tab_test],
                                                batch_size=config.BATCH_SIZE, verbose=0)
         
-        entropy_test = routing.calculate_entropy(lite_preds_test)
-        safe_indices = [config.CLASS_NAMES.index(c) for c in config.SAFE_CLASSES]
-        danger_indices = [config.CLASS_NAMES.index(c) for c in config.DANGEROUS_CLASSES]
-        prob_safe = lite_preds_test[:, safe_indices].sum(axis=1)
-        prob_danger = lite_preds_test[:, danger_indices].sum(axis=1)
-        safe_danger_gap_test = prob_safe - prob_danger
-        
         y_true_test = y_labels[test_idx]
-        heavy_baseline_acc = accuracy_score(y_true_test, np.argmax(heavy_preds_test, axis=1))
         
-        optimizer = routing.SafetyFirstOptimizer(
-            lite_preds_test, heavy_preds_test, y_true_test,
-            entropy_test, safe_danger_gap_test, heavy_baseline_acc
-        )
-        optimal_config, _ = optimizer.optimize()
-        
-        if risk_scaler is not None:
-            patient_risk = features.calculate_cumulative_risk(meta_test, risk_scaler)
-        elif 'risk_score' in meta_test.columns:
-            patient_risk = meta_test['risk_score'].values
+        if routing_strategy == 'budget':
+            # Budget routing: force fixed 35% of most-uncertain samples to heavy model.
+            # Used for domain-shifted datasets where threshold optimisation is unreliable.
+            final_preds, route_mask, _ = routing.apply_budget_routing(
+                lite_preds_test, heavy_preds_test,
+                budget=budget,
+                class_names=class_names,
+                safe_classes=safe_classes,
+                danger_classes=dangerous_classes,
+            )
+            # Budget routing has no per-reason decomposition; mark all routed as uncertainty
+            route_components = {
+                'uncertainty': route_mask.copy(),
+                'ambiguity':   np.zeros(len(route_mask), dtype=bool),
+                'safety':      np.zeros(len(route_mask), dtype=bool),
+            }
         else:
-            patient_risk = None
-        
-        final_preds, route_mask, route_components = routing.apply_threshold_routing(
-            lite_preds_test, heavy_preds_test,
-            entropy_threshold=optimal_config['entropy_t'],
-            gap_threshold=optimal_config['gap_t'],
-            heavy_weight=optimal_config['heavy_weight'],
-            patient_risk=patient_risk,
-            safety_threshold=0.75
-        )
+            # Threshold routing with SafetyFirstOptimizer (HAM / source domain)
+            entropy_test = routing.calculate_entropy(lite_preds_test)
+            safe_indices   = [class_names.index(c) for c in safe_classes]
+            danger_indices = [class_names.index(c) for c in dangerous_classes]
+            prob_safe   = lite_preds_test[:, safe_indices].sum(axis=1)
+            prob_danger = lite_preds_test[:, danger_indices].sum(axis=1)
+            safe_danger_gap_test = prob_safe - prob_danger
+            
+            heavy_baseline_acc = accuracy_score(y_true_test, np.argmax(heavy_preds_test, axis=1))
+            optimizer = routing.SafetyFirstOptimizer(
+                lite_preds_test, heavy_preds_test, y_true_test,
+                entropy_test, safe_danger_gap_test, heavy_baseline_acc
+            )
+            optimal_config, _ = optimizer.optimize()
+            
+            if risk_scaler is not None:
+                patient_risk = features.calculate_cumulative_risk(meta_test, risk_scaler)
+            elif 'risk_score' in meta_test.columns:
+                patient_risk = meta_test['risk_score'].values
+            else:
+                patient_risk = None
+            
+            final_preds, route_mask, route_components = routing.apply_threshold_routing(
+                lite_preds_test, heavy_preds_test,
+                entropy_threshold=optimal_config['entropy_t'],
+                gap_threshold=optimal_config['gap_t'],
+                heavy_weight=optimal_config['heavy_weight'],
+                patient_risk=patient_risk,
+                safety_threshold=0.75
+            )
         
         acc_lite = accuracy_score(y_true_test, np.argmax(lite_preds_test, axis=1))
         acc_heavy = accuracy_score(y_true_test, np.argmax(heavy_preds_test, axis=1))

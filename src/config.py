@@ -13,10 +13,15 @@ LEARNING_RATE = 1e-4
 ENTROPY_THRESHOLD = 0.65  # Initial default
 SAFE_DANGER_GAP_THRESHOLD = 0.15  # Initial default
 
-# Class Definitions
+# HAM10000 Class Definitions
 CLASS_NAMES = ['akiec', 'bcc', 'bkl', 'df', 'mel', 'nv', 'vasc']
 SAFE_CLASSES = ['nv', 'bkl', 'vasc', 'df']
 DANGEROUS_CLASSES = ['mel', 'bcc', 'akiec']
+
+# PAD-UFES-20 Class Definitions
+PAD_CLASS_NAMES    = ['bcc', 'scc', 'mel', 'ack', 'nev', 'sek']
+PAD_SAFE_CLASSES   = ['ack', 'nev', 'sek']
+PAD_DANGEROUS_CLASSES = ['mel', 'bcc', 'scc']
 
 # Risk Scoring - Localization Risk Scores
 LOCALIZATION_RISK_SCORES = {
