@@ -950,7 +950,7 @@ def plot_gender_age_accuracy(y_true, lite_preds, heavy_preds, dynamic_preds, met
     return fig
 
 
-def plot_fairness_disparity(fairness_lite, fairness_heavy, fairness_ecofair):
+def plot_fairness_disparity(fairness_lite, fairness_heavy, fairness_ecofair, dangerous_classes=None):
     """
     Plot side-by-side Gender and Age disparity gaps for dangerous classes.
     
@@ -961,11 +961,15 @@ def plot_fairness_disparity(fairness_lite, fairness_heavy, fairness_ecofair):
         fairness_lite: DataFrame from generate_fairness_report for lite model
         fairness_heavy: DataFrame from generate_fairness_report for heavy model
         fairness_ecofair: DataFrame from generate_fairness_report for EcoFair (dynamic) model
+        dangerous_classes: List of dangerous class names. Defaults to config.DANGEROUS_CLASSES.
     
     Returns:
         matplotlib.figure.Figure: Figure with two subplots
     """
-    dangerous_classes = list(config.DANGEROUS_CLASSES)
+    if dangerous_classes is None:
+        dangerous_classes = list(config.DANGEROUS_CLASSES)
+    else:
+        dangerous_classes = list(dangerous_classes)
     
     def _filter_unknown(df):
         """Remove rows where Subgroup contains 'Unknown'."""
