@@ -915,80 +915,124 @@ def plot_gender_age_accuracy(y_true, lite_preds, heavy_preds, dynamic_preds, met
     return fig
 
 
-def plot_fairness_disparity(fairness_lite, fairness_heavy, fairness_ecofair, attribute='Sex'):
+def plot_fairness_disparity(fairness_lite, fairness_heavy, fairness_ecofair):
     """
-    Plot the Absolute TPR Gap (|TPR_Male - TPR_Female|) for dangerous classes.
+    Plot side-by-side Gender and Age disparity gaps for dangerous classes.
     
-    Lower gap indicates fairer performance across demographics.
+    Left: |TPR_Male - TPR_Female|. Right: Max(TPR) - Min(TPR) across age groups.
+    Lower gap indicates fairer performance. Filters out subgroups containing 'Unknown'.
     
     Args:
         fairness_lite: DataFrame from generate_fairness_report for lite model
         fairness_heavy: DataFrame from generate_fairness_report for heavy model
         fairness_ecofair: DataFrame from generate_fairness_report for EcoFair (dynamic) model
-        attribute: 'Sex' or 'Age' - which demographic to compare (default: 'Sex')
     
     Returns:
-        matplotlib.figure.Figure: Figure with grouped bar chart
+        matplotlib.figure.Figure: Figure with two subplots
     """
     dangerous_classes = list(config.DANGEROUS_CLASSES)
     
-    def _get_tpr_gap(df):
-        """For each dangerous class, compute |TPR_group1 - TPR_group2|. Ignore NaN."""
+    def _filter_unknown(df):
+        """Remove rows where Subgroup contains 'Unknown'."""
+        if df.empty or 'Subgroup' not in df.columns:
+            return df
+        return df[~df['Subgroup'].str.contains('Unknown', case=False, na=False)].copy()
+    
+    def _strip_count(series):
+        """Strip ' (n=...)' suffix from Subgroup for matching."""
+        return series.str.replace(r'\s*\(n=\d+\)\s*$', '', regex=True).str.strip()
+    
+    def _get_gender_gap(df):
+        """|TPR_Male - TPR_Female| for each dangerous class."""
+        df = _filter_unknown(df)
         gaps = {}
         for cls in dangerous_classes:
-            sub_prefix = 'Sex: ' if attribute == 'Sex' else 'Age '
-            df_cls = df[(df['Class'] == cls) & (df['Subgroup'].str.startswith(sub_prefix))]
+            df_cls = df[(df['Class'] == cls) & (df['Subgroup'].str.startswith('Sex: '))]
             if df_cls.empty:
                 gaps[cls] = np.nan
                 continue
-            # Strip " (n=...)" suffix if present (from main.py display formatting)
             df_cls = df_cls.copy()
-            df_cls['_sub'] = df_cls['Subgroup'].str.replace(r'\s*\(n=\d+\)\s*$', '', regex=True).str.strip()
+            df_cls['_sub'] = _strip_count(df_cls['Subgroup'])
             piv = df_cls.drop_duplicates('_sub').set_index('_sub')['Equal_Opportunity_TPR']
-            if attribute == 'Sex':
-                male_tpr = piv.get('Sex: Male', np.nan)
-                female_tpr = piv.get('Sex: Female', np.nan)
-                if pd.notna(male_tpr) and pd.notna(female_tpr):
-                    gaps[cls] = abs(float(male_tpr) - float(female_tpr))
-                else:
-                    gaps[cls] = np.nan
+            male_tpr = piv.get('Sex: Male', np.nan)
+            female_tpr = piv.get('Sex: Female', np.nan)
+            if pd.notna(male_tpr) and pd.notna(female_tpr):
+                gaps[cls] = abs(float(male_tpr) - float(female_tpr))
             else:
-                vals = piv.dropna().astype(float).values
-                gaps[cls] = (float(np.max(vals)) - float(np.min(vals))) if len(vals) >= 2 else np.nan
+                gaps[cls] = np.nan
         return gaps
     
-    gaps_lite = _get_tpr_gap(fairness_lite)
-    gaps_heavy = _get_tpr_gap(fairness_heavy)
-    gaps_ecofair = _get_tpr_gap(fairness_ecofair)
-    
-    x = np.arange(len(dangerous_classes))
-    width = 0.25
+    def _get_age_gap(df):
+        """Max(TPR) - Min(TPR) across <30, 30-60, 60+ for each dangerous class."""
+        df = _filter_unknown(df)
+        gaps = {}
+        age_subs = ['Age <30', 'Age 30-60', 'Age 60+']
+        for cls in dangerous_classes:
+            df_cls = df[(df['Class'] == cls) & (df['Subgroup'].str.startswith('Age '))]
+            if df_cls.empty:
+                gaps[cls] = np.nan
+                continue
+            df_cls = df_cls.copy()
+            df_cls['_sub'] = _strip_count(df_cls['Subgroup'])
+            piv = df_cls.drop_duplicates('_sub').set_index('_sub')['Equal_Opportunity_TPR']
+            vals = [float(piv.get(s, np.nan)) for s in age_subs if s in piv.index]
+            vals = [v for v in vals if pd.notna(v)]
+            gaps[cls] = (float(np.max(vals)) - float(np.min(vals))) if len(vals) >= 2 else np.nan
+        return gaps
     
     def _safe(v):
         return v if pd.notna(v) else 0.0
     
-    fig, ax = plt.subplots(1, 1, figsize=(10, 6))
-    bars1 = ax.bar(x - width, [_safe(gaps_lite.get(c, np.nan)) for c in dangerous_classes],
-                   width, label='Pure Lite', color='skyblue')
-    bars2 = ax.bar(x, [_safe(gaps_heavy.get(c, np.nan)) for c in dangerous_classes],
-                   width, label='Pure Heavy', color='orangered')
-    bars3 = ax.bar(x + width, [_safe(gaps_ecofair.get(c, np.nan)) for c in dangerous_classes],
-                   width, label='EcoFair', color='lightgreen')
+    gaps_lite_g = _get_gender_gap(fairness_lite)
+    gaps_heavy_g = _get_gender_gap(fairness_heavy)
+    gaps_ecofair_g = _get_gender_gap(fairness_ecofair)
     
-    ax.set_xlabel('Dangerous Class', fontsize=12)
-    ax.set_ylabel('Absolute TPR Disparity', fontsize=12)
-    ax.set_title('Gender Disparity in Cancer Detection (Equal Opportunity Gap)', fontsize=14, pad=15)
-    ax.set_xticks(x)
-    ax.set_xticklabels(dangerous_classes)
-    ax.legend(loc='upper right', fontsize=10)
-    ax.set_ylim(bottom=0)
-    ax.grid(True, alpha=0.3, axis='y', linestyle='--')
-    ax.xaxis.grid(False)
+    gaps_lite_a = _get_age_gap(fairness_lite)
+    gaps_heavy_a = _get_age_gap(fairness_heavy)
+    gaps_ecofair_a = _get_age_gap(fairness_ecofair)
     
-    # Interpretative text box
+    x = np.arange(len(dangerous_classes))
+    width = 0.25
+    
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+    
+    # Left: Gender Disparity
+    ax1.bar(x - width, [_safe(gaps_lite_g.get(c, np.nan)) for c in dangerous_classes],
+            width, label='Pure Lite', color='skyblue')
+    ax1.bar(x, [_safe(gaps_heavy_g.get(c, np.nan)) for c in dangerous_classes],
+            width, label='Pure Heavy', color='orangered')
+    ax1.bar(x + width, [_safe(gaps_ecofair_g.get(c, np.nan)) for c in dangerous_classes],
+            width, label='EcoFair', color='lightgreen')
+    ax1.set_xlabel('Dangerous Class', fontsize=12)
+    ax1.set_ylabel('Absolute TPR Disparity', fontsize=12)
+    ax1.set_title('Gender Disparity (|TPR_Male - TPR_Female|)', fontsize=12, pad=10)
+    ax1.set_xticks(x)
+    ax1.set_xticklabels(dangerous_classes)
+    ax1.legend(loc='upper right', fontsize=10)
+    ax1.set_ylim(0, 1.0)
+    ax1.grid(True, alpha=0.3, axis='y', linestyle='--')
+    ax1.xaxis.grid(False)
+    
+    # Right: Age Disparity
+    ax2.bar(x - width, [_safe(gaps_lite_a.get(c, np.nan)) for c in dangerous_classes],
+            width, label='Pure Lite', color='skyblue')
+    ax2.bar(x, [_safe(gaps_heavy_a.get(c, np.nan)) for c in dangerous_classes],
+            width, label='Pure Heavy', color='orangered')
+    ax2.bar(x + width, [_safe(gaps_ecofair_a.get(c, np.nan)) for c in dangerous_classes],
+            width, label='EcoFair', color='lightgreen')
+    ax2.set_xlabel('Dangerous Class', fontsize=12)
+    ax2.set_ylabel('Absolute TPR Disparity', fontsize=12)
+    ax2.set_title('Age Disparity (Max - Min TPR across <30, 30-60, 60+)', fontsize=12, pad=10)
+    ax2.set_xticks(x)
+    ax2.set_xticklabels(dangerous_classes)
+    ax2.legend(loc='upper right', fontsize=10)
+    ax2.set_ylim(0, 1.0)
+    ax2.grid(True, alpha=0.3, axis='y', linestyle='--')
+    ax2.xaxis.grid(False)
+    
     props = dict(boxstyle='round', facecolor='wheat', alpha=0.8)
-    ax.text(0.02, 0.98, 'Lower gap indicates fairer performance across demographic.',
-            transform=ax.transAxes, fontsize=10, verticalalignment='top', bbox=props)
+    fig.text(0.5, 0.02, 'Lower gap indicates fairer performance across demographic.',
+             ha='center', fontsize=10, bbox=props)
     
-    plt.tight_layout()
+    plt.tight_layout(rect=[0, 0.05, 1, 1])
     return fig

@@ -169,3 +169,39 @@ def generate_fairness_report(y_true, y_pred, meta_df, class_names=None):
     if not results:
         return pd.DataFrame(columns=columns)
     return pd.DataFrame(results)
+
+
+def print_fairness_audit(fairness_df):
+    """
+    Print fairness metrics as formatted pivot tables.
+    
+    Appends (n=Count) to Subgroup names and prints three pivot tables:
+    Accuracy, Equal Opportunity (TPR), Demographic Parity.
+    Uses '-' for missing data.
+    
+    Args:
+        fairness_df: DataFrame from generate_fairness_report
+    """
+    required_cols = ['Subgroup', 'Class', 'Count', 'Accuracy', 'Equal_Opportunity_TPR', 'Demographic_Parity_Rate']
+    if fairness_df.empty or not all(c in fairness_df.columns for c in required_cols):
+        print("No fairness data (empty or missing columns). Raw report:")
+        print(fairness_df)
+        return
+    
+    df = fairness_df.copy()
+    df['Subgroup'] = df.apply(lambda r: f"{r['Subgroup']} (n={int(r['Count'])})", axis=1)
+    
+    pd.set_option('display.max_rows', None)
+    pd.set_option('display.float_format', '{:.4f}'.format)
+    
+    print("\n--- Subgroup Accuracy ---")
+    print(df.pivot(index='Subgroup', columns='Class', values='Accuracy').fillna('-'))
+    
+    print("\n--- Equal Opportunity (True Positive Rate) ---")
+    print("Goal: TPR should be roughly equal across subgroups for the same class.")
+    print("'-' indicates no actual cases of that class in the subgroup.")
+    print(df.pivot(index='Subgroup', columns='Class', values='Equal_Opportunity_TPR').fillna('-'))
+    
+    print("\n--- Demographic Parity (Positive Prediction Rate) ---")
+    print("Measures the raw rate at which a class is predicted for a specific subgroup.")
+    print(df.pivot(index='Subgroup', columns='Class', values='Demographic_Parity_Rate').fillna('-'))

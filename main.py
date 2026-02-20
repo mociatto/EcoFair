@@ -283,63 +283,28 @@ print("\n" + "="*70)
 print("PART 3: SYSTEMATIC FAIRNESS AUDIT (One-vs-Rest)")
 print("="*70)
 
-# Convert one-hot / probability arrays to class indices
+# Convert one-hot probabilities to class indices
 y_true_labels = np.argmax(y_true_test, axis=1) if len(y_true_test.shape) > 1 else y_true_test
 lite_pred_labels = np.argmax(lite_preds_test, axis=1)
 heavy_pred_labels = np.argmax(heavy_preds_test, axis=1)
 dynamic_pred_labels = np.argmax(final_preds_ham, axis=1)
 
-# Generate fairness reports for all three models
+# Generate reports
+fairness_ecofair = fairness.generate_fairness_report(
+    y_true_labels, dynamic_pred_labels, meta_test, config.CLASS_NAMES
+)
 fairness_lite = fairness.generate_fairness_report(
-    y_true=y_true_labels, y_pred=lite_pred_labels,
-    meta_df=meta_test, class_names=config.CLASS_NAMES
+    y_true_labels, lite_pred_labels, meta_test, config.CLASS_NAMES
 )
 fairness_heavy = fairness.generate_fairness_report(
-    y_true=y_true_labels, y_pred=heavy_pred_labels,
-    meta_df=meta_test, class_names=config.CLASS_NAMES
-)
-fairness_df = fairness.generate_fairness_report(
-    y_true=y_true_labels, y_pred=dynamic_pred_labels,
-    meta_df=meta_test, class_names=config.CLASS_NAMES
+    y_true_labels, heavy_pred_labels, meta_test, config.CLASS_NAMES
 )
 
-# Display results cleanly
-print("\nFairness Metrics across Demographic Subgroups and Classes:")
-pd.set_option('display.max_rows', None)
-pd.set_option('display.float_format', '{:.4f}'.format)
+# Print tabular results cleanly using the backend function
+print("\nEcoFair Fairness Metrics across Demographic Subgroups and Classes:")
+fairness.print_fairness_audit(fairness_ecofair)
 
-required_cols = ['Subgroup', 'Class', 'Count', 'Accuracy', 'Equal_Opportunity_TPR', 'Demographic_Parity_Rate']
-if fairness_df.empty or not all(c in fairness_df.columns for c in required_cols):
-    print("No fairness data (empty or missing age/sex subgroups). Raw report:")
-    print(fairness_df)
-else:
-    # Inject sample size into Subgroup label: "Age <30" -> "Age <30 (n=213)"
-    fairness_df = fairness_df.copy()
-    fairness_df['Subgroup'] = fairness_df.apply(
-        lambda r: f"{r['Subgroup']} (n={int(r['Count'])})", axis=1
-    )
-
-    # 1. Subgroup Accuracy
-    print("\n--- Subgroup Accuracy ---")
-    pivot_acc = fairness_df.pivot(index='Subgroup', columns='Class', values='Accuracy')
-    print(pivot_acc.fillna('-'))
-
-    # 2. Equal Opportunity (TPR) - use '-' for NaN (lack of data, not model failure)
-    print("\n--- Equal Opportunity (True Positive Rate) ---")
-    print("Goal: TPR should be roughly equal across subgroups for the same class.")
-    print("'-' indicates no actual cases of that class in the subgroup.")
-    pivot_tpr = fairness_df.pivot(index='Subgroup', columns='Class', values='Equal_Opportunity_TPR')
-    print(pivot_tpr.fillna('-'))
-
-    # 3. Demographic Parity
-    print("\n--- Demographic Parity (Positive Prediction Rate) ---")
-    print("Measures the raw rate at which a class is predicted for a specific subgroup.")
-    pivot_dp = fairness_df.pivot(index='Subgroup', columns='Class', values='Demographic_Parity_Rate')
-    print(pivot_dp.fillna('-'))
-
-    # 4. Fairness Disparity Gap (Gender)
-    print("\nPlotting fairness disparity gap...")
-    fig_disparity = visualization.plot_fairness_disparity(
-        fairness_lite, fairness_heavy, fairness_df, attribute='Sex'
-    )
-    plt.show()
+# Plot Side-by-Side Disparity Gaps
+print("\nGenerating Fairness Disparity Visualizations...")
+visualization.plot_fairness_disparity(fairness_lite, fairness_heavy, fairness_ecofair)
+plt.show()
