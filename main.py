@@ -278,14 +278,35 @@ except TypeError:
     plt.tight_layout()
     plt.show()
 
-# %% Fairness Analysis
-print("\nGenerating fairness analysis...")
-ham_fairness = fairness.generate_fairness_report(
-    y_true_test, y_pred_ham, meta_test
+# %% Fairness Audit
+print("\n" + "="*70)
+print("PART 3: SYSTEMATIC FAIRNESS AUDIT (One-vs-Rest)")
+print("="*70)
+
+# Convert one-hot / probability arrays to class indices
+y_true_labels = np.argmax(y_true_test, axis=1) if len(y_true_test.shape) > 1 else y_true_test
+dynamic_pred_labels = np.argmax(final_preds_ham, axis=1)
+
+# Generate the comprehensive fairness report
+fairness_df = fairness.generate_fairness_report(
+    y_true=y_true_labels,
+    y_pred=dynamic_pred_labels,
+    meta_df=meta_test,
+    class_names=config.CLASS_NAMES
 )
 
-print("\n" + "="*80)
-print("FAIRNESS REPORT - HAM10000 Dataset")
-print("="*80)
-print(ham_fairness.to_string(index=False))
-print("="*80)
+# Display results cleanly
+print("\nFairness Metrics across Demographic Subgroups and Classes:")
+pd.set_option('display.max_rows', None)
+pd.set_option('display.float_format', '{:.4f}'.format)
+
+# Pivot table for better readability: Rows = Subgroups, Columns = Classes, Values = Equal Opportunity (TPR)
+print("\n--- Equal Opportunity (True Positive Rate) ---")
+print("Goal: TPR should be roughly equal across subgroups for the same class.")
+pivot_tpr = fairness_df.pivot(index='Subgroup', columns='Class', values='Equal_Opportunity_TPR')
+print(pivot_tpr)
+
+print("\n--- Demographic Parity (Positive Prediction Rate) ---")
+print("Measures the raw rate at which a class is predicted for a specific subgroup.")
+pivot_dp = fairness_df.pivot(index='Subgroup', columns='Class', values='Demographic_Parity_Rate')
+print(pivot_dp)

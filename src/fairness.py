@@ -1,208 +1,174 @@
 """
 Fairness evaluation module for EcoFair project.
 
-This module provides systematic fairness evaluation for the EcoFair pipeline,
-calculating metrics like Demographic Parity and Equal Opportunity across
-sensitive subgroups (Age and Sex).
+This module provides systematic fairness evaluation using a subgroup-specific,
+One-vs-Rest evaluation strategy for every class across demographic subgroups.
 """
 
 import numpy as np
 import pandas as pd
-from sklearn.metrics import accuracy_score, f1_score
 
 from . import config
 
 
-def calculate_demographic_parity(y_pred, sensitive_group_mask, positive_class_indices=None):
+def _ensure_1d_class_indices(y):
+    """Convert one-hot or probability arrays to 1D class indices."""
+    if len(np.asarray(y).shape) > 1:
+        return np.argmax(y, axis=1)
+    return np.asarray(y).flatten()
+
+
+def calculate_equal_opportunity(tp, fn):
     """
-    Calculate Demographic Parity (Positive Prediction Rate) for a subgroup.
+    Equal Opportunity (True Positive Rate): TP / (TP + FN).
     
-    Demographic Parity measures if the Positive Prediction Rate (PPR) is similar
-    across groups. PPR is the proportion of predictions that are positive.
-    
-    Args:
-        y_pred: Model predictions (class indices), shape (n_samples,)
-        sensitive_group_mask: Boolean array (True for the specific subgroup)
-        positive_class_indices: List of class indices considered "positive" (malignant).
-                                If None, uses config.DANGEROUS_CLASSES
-    
-    Returns:
-        float: Positive Prediction Rate (PPR) for the subgroup
+    Returns 0 if denominator is 0.
     """
-    if positive_class_indices is None:
-        positive_class_indices = [config.CLASS_NAMES.index(c) for c in config.DANGEROUS_CLASSES]
-    
-    # Convert to binary: is prediction positive (malignant)?
-    y_pred_binary = np.isin(y_pred, positive_class_indices)
-    
-    # Calculate PPR for the subgroup
-    if sensitive_group_mask.sum() == 0:
+    denom = tp + fn
+    if denom == 0:
         return 0.0
-    
-    subgroup_ppr = y_pred_binary[sensitive_group_mask].mean()
-    
-    return subgroup_ppr
+    return tp / denom
 
 
-def calculate_equal_opportunity(y_true, y_pred, sensitive_group_mask, positive_class_indices=None):
+def calculate_demographic_parity(tp, fp, tn, fn):
     """
-    Calculate Equal Opportunity (True Positive Rate/Recall) for a subgroup.
+    Demographic Parity (Positive Prediction Rate): (TP + FP) / (TP + TN + FP + FN).
     
-    Equal Opportunity measures if True Positive Rate (Recall/Sensitivity) is
-    similar across groups. This is the proportion of actual positives that
-    are correctly predicted as positive.
-    
-    Args:
-        y_true: True labels (class indices), shape (n_samples,)
-        y_pred: Model predictions (class indices), shape (n_samples,)
-        sensitive_group_mask: Boolean array (True for the specific subgroup)
-        positive_class_indices: List of class indices considered "positive" (malignant).
-                                If None, uses config.DANGEROUS_CLASSES
-    
-    Returns:
-        float: True Positive Rate (Recall) for the subgroup
+    Returns 0 if denominator is 0.
     """
-    if positive_class_indices is None:
-        positive_class_indices = [config.CLASS_NAMES.index(c) for c in config.DANGEROUS_CLASSES]
+    denom = tp + tn + fp + fn
+    if denom == 0:
+        return 0.0
+    return (tp + fp) / denom
+
+
+def calculate_subgroup_accuracy(tp, fp, tn, fn):
+    """
+    Subgroup Accuracy: (TP + TN) / (TP + TN + FP + FN).
     
-    # Convert to binary: is label/prediction positive (malignant)?
-    y_true_binary = np.isin(y_true, positive_class_indices)
-    y_pred_binary = np.isin(y_pred, positive_class_indices)
+    Returns 0 if denominator is 0.
+    """
+    denom = tp + tn + fp + fn
+    if denom == 0:
+        return 0.0
+    return (tp + tn) / denom
+
+
+def _compute_ovr_confusion(y_true, y_pred, mask, class_index):
+    """
+    One-vs-Rest confusion components for a given class index and subgroup mask.
     
-    # Filter for Ground Truth Positives within the subgroup
-    pos_mask = sensitive_group_mask & y_true_binary
+    TP: Actual == class_index & Predicted == class_index
+    FP: Actual != class_index & Predicted == class_index
+    TN: Actual != class_index & Predicted != class_index
+    FN: Actual == class_index & Predicted != class_index
+    """
+    y_true_m = y_true[mask]
+    y_pred_m = y_pred[mask]
     
-    if pos_mask.sum() == 0:
-        return 0.0  # No positive cases in subgroup
+    actual_pos = (y_true_m == class_index)
+    actual_neg = ~actual_pos
+    pred_pos  = (y_pred_m == class_index)
+    pred_neg  = ~pred_pos
     
-    # Calculate Recall: TP / (TP + FN) = TP / (all positives in subgroup)
-    subgroup_recall = y_pred_binary[pos_mask].mean()
+    tp = np.sum(actual_pos & pred_pos)
+    fp = np.sum(actual_neg & pred_pos)
+    tn = np.sum(actual_neg & pred_neg)
+    fn = np.sum(actual_pos & pred_neg)
     
-    return subgroup_recall
+    return tp, fp, tn, fn
 
 
 def generate_fairness_report(y_true, y_pred, meta_df, class_names=None):
     """
-    Generate a comprehensive fairness report across demographic subgroups.
+    Generate a comprehensive fairness report using One-vs-Rest per class.
     
-    Calculates accuracy, F1 score, demographic parity (positive rate), and
-    equal opportunity (recall) for each subgroup defined by age and sex.
+    For each subgroup (Age, Sex) and each class, computes:
+    - Accuracy (subgroup-specific)
+    - Demographic Parity Rate (positive prediction rate for that class)
+    - Equal Opportunity TPR (recall for that class)
     
     Args:
-        y_true: True labels (class indices), shape (n_samples,)
-        y_pred: Model predictions (class indices), shape (n_samples,)
+        y_true: True labels (class indices or one-hot), shape (n_samples,) or (n_samples, n_classes)
+        y_pred: Predictions (class indices or one-hot), shape (n_samples,) or (n_samples, n_classes)
         meta_df: DataFrame with metadata columns ('age', 'sex' or 'gender')
         class_names: List of class names. If None, uses config.CLASS_NAMES
     
     Returns:
         pandas.DataFrame: Fairness report with columns:
-            ['Subgroup', 'Count', 'Accuracy', 'F1_Score', 'Positive_Rate', 'Recall']
+            ['Subgroup', 'Class', 'Count', 'Accuracy', 'Demographic_Parity_Rate', 'Equal_Opportunity_TPR']
     """
     if class_names is None:
         class_names = config.CLASS_NAMES
     
-    positive_class_indices = [class_names.index(c) for c in config.DANGEROUS_CLASSES]
+    y_true = _ensure_1d_class_indices(y_true)
+    y_pred = _ensure_1d_class_indices(y_pred)
     
-    # Preprocessing: Extract and normalize age
     meta_df_copy = meta_df.copy()
     
-    # Create age bins: <30, 30-60, 60+
-    if 'age' in meta_df_copy.columns:
-        meta_df_copy['age_bin'] = pd.cut(
-            meta_df_copy['age'],
+    # Age subgroups: <30, 30-60, 60+
+    age_col = None
+    for c in ['age', 'Age']:
+        if c in meta_df_copy.columns:
+            age_col = c
+            break
+    if age_col is not None:
+        meta_df_copy['_age_bin'] = pd.cut(
+            meta_df_copy[age_col].fillna(0),
             bins=[0, 30, 60, 200],
             labels=['<30', '30-60', '60+'],
             include_lowest=True
         )
     else:
-        meta_df_copy['age_bin'] = 'Unknown'
+        meta_df_copy['_age_bin'] = 'Unknown'
     
-    # Extract and normalize sex/gender
-    if 'sex' in meta_df_copy.columns:
-        sex_col = 'sex'
-    elif 'gender' in meta_df_copy.columns:
-        sex_col = 'gender'
-    else:
-        sex_col = None
-    
-    if sex_col:
-        # Normalize to 'Male', 'Female'
-        meta_df_copy['sex_normalized'] = meta_df_copy[sex_col].astype(str).str.lower().str.strip()
-        meta_df_copy['sex_normalized'] = meta_df_copy['sex_normalized'].map({
-            'male': 'Male',
-            'm': 'Male',
-            'female': 'Female',
-            'f': 'Female',
-            'woman': 'Female',
-            'man': 'Male'
+    # Sex subgroups: Male, Female
+    sex_col = None
+    for c in ['sex', 'gender', 'Sex', 'Gender']:
+        if c in meta_df_copy.columns:
+            sex_col = c
+            break
+    if sex_col is not None:
+        s = meta_df_copy[sex_col].astype(str).str.lower().str.strip()
+        meta_df_copy['_sex_norm'] = s.map({
+            'male': 'Male', 'm': 'Male', 'man': 'Male',
+            'female': 'Female', 'f': 'Female', 'woman': 'Female'
         }).fillna('Other')
     else:
-        meta_df_copy['sex_normalized'] = 'Unknown'
+        meta_df_copy['_sex_norm'] = 'Unknown'
     
-    # Initialize results list
     results = []
     
-    # Define subgroups
+    # Build subgroup list
     subgroups = []
+    if '_age_bin' in meta_df_copy.columns:
+        for v in ['<30', '30-60', '60+']:
+            if (meta_df_copy['_age_bin'] == v).any():
+                subgroups.append((f"Age {v}", meta_df_copy['_age_bin'] == v))
+    if '_sex_norm' in meta_df_copy.columns:
+        for v in ['Male', 'Female']:
+            if (meta_df_copy['_sex_norm'] == v).any():
+                subgroups.append((f"Sex: {v}", meta_df_copy['_sex_norm'] == v))
     
-    # Age subgroups
-    if 'age_bin' in meta_df_copy.columns:
-        for age_bin in ['<30', '30-60', '60+']:
-            if age_bin in meta_df_copy['age_bin'].values:
-                subgroups.append(('Age', age_bin))
-    
-    # Sex subgroups
-    if 'sex_normalized' in meta_df_copy.columns:
-        for sex in ['Male', 'Female']:
-            if sex in meta_df_copy['sex_normalized'].values:
-                subgroups.append(('Sex', sex))
-    
-    # Calculate metrics for each subgroup
-    for subgroup_type, subgroup_value in subgroups:
-        if subgroup_type == 'Age':
-            mask = meta_df_copy['age_bin'] == subgroup_value
-            subgroup_name = f"Age {subgroup_value}"
-        else:  # Sex
-            mask = meta_df_copy['sex_normalized'] == subgroup_value
-            subgroup_name = f"Sex: {subgroup_value}"
-        
+    for subgroup_name, mask in subgroups:
+        mask = mask.values if hasattr(mask, 'values') else mask
         if mask.sum() == 0:
             continue
         
-        # Count
-        count = mask.sum()
-        
-        # Accuracy
-        accuracy = accuracy_score(y_true[mask], y_pred[mask])
-        
-        # Macro F1 Score
-        f1 = f1_score(y_true[mask], y_pred[mask], average='macro', zero_division=0)
-        
-        # Demographic Parity (Positive Prediction Rate)
-        # Calculate directly on filtered data
-        y_pred_subgroup = y_pred[mask]
-        y_pred_binary = np.isin(y_pred_subgroup, positive_class_indices)
-        positive_rate = y_pred_binary.mean() if len(y_pred_binary) > 0 else 0.0
-        
-        # Equal Opportunity (Recall for Malignant classes)
-        # Calculate directly on filtered data
-        y_true_subgroup = y_true[mask]
-        y_pred_subgroup = y_pred[mask]
-        y_true_binary = np.isin(y_true_subgroup, positive_class_indices)
-        y_pred_binary = np.isin(y_pred_subgroup, positive_class_indices)
-        pos_mask = y_true_binary
-        recall = y_pred_binary[pos_mask].mean() if pos_mask.sum() > 0 else 0.0
-        
-        results.append({
-            'Subgroup': subgroup_name,
-            'Count': count,
-            'Accuracy': accuracy,
-            'F1_Score': f1,
-            'Positive_Rate': positive_rate,
-            'Recall': recall
-        })
+        for class_index, class_name in enumerate(class_names):
+            tp, fp, tn, fn = _compute_ovr_confusion(y_true, y_pred, mask, class_index)
+            
+            acc = calculate_subgroup_accuracy(tp, fp, tn, fn)
+            dp  = calculate_demographic_parity(tp, fp, tn, fn)
+            tpr = calculate_equal_opportunity(tp, fn)
+            
+            results.append({
+                'Subgroup': subgroup_name,
+                'Class': class_name,
+                'Count': int(mask.sum()),
+                'Accuracy': acc,
+                'Demographic_Parity_Rate': dp,
+                'Equal_Opportunity_TPR': tpr
+            })
     
-    # Create DataFrame
-    fairness_df = pd.DataFrame(results)
-    
-    return fairness_df
+    return pd.DataFrame(results)

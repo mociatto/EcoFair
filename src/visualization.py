@@ -449,11 +449,11 @@ def plot_risk_stratified_accuracy(y_true, lite_preds, heavy_preds, dynamic_preds
     x = np.arange(len(risk_groups))
     width = 0.25
     
-    bars1 = ax.bar(x - width, lite_accuracies, width, label='Lite Accuracy',
+    bars1 = ax.bar(x - width, lite_accuracies, width, label='Pure Lite',
                   color='skyblue', edgecolor='white', linewidth=2.5)
-    bars2 = ax.bar(x, heavy_accuracies, width, label='Heavy Accuracy',
+    bars2 = ax.bar(x, heavy_accuracies, width, label='Pure Heavy',
                   color='orangered', edgecolor='white', linewidth=2.5)
-    bars3 = ax.bar(x + width, dynamic_accuracies, width, label='Dynamic Accuracy',
+    bars3 = ax.bar(x + width, dynamic_accuracies, width, label='EcoFair',
                   color='lightgreen', edgecolor='white', linewidth=2.5)
     
     ax.set_ylabel('Accuracy', fontsize=12, fontweight='normal')
@@ -462,7 +462,7 @@ def plot_risk_stratified_accuracy(y_true, lite_preds, heavy_preds, dynamic_preds
     ax.set_xticks(x)
     ax.set_xticklabels(risk_groups)
     ax.set_ylim([0, 1.0])
-    ax.legend(loc='lower left', fontsize=10)
+    ax.legend(loc='lower right', fontsize=10)
     ax.grid(True, alpha=0.3, axis='y', linestyle='--')
     ax.xaxis.grid(False)
     ax.set_axisbelow(True)
