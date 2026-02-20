@@ -285,14 +285,22 @@ print("="*70)
 
 # Convert one-hot / probability arrays to class indices
 y_true_labels = np.argmax(y_true_test, axis=1) if len(y_true_test.shape) > 1 else y_true_test
+lite_pred_labels = np.argmax(lite_preds_test, axis=1)
+heavy_pred_labels = np.argmax(heavy_preds_test, axis=1)
 dynamic_pred_labels = np.argmax(final_preds_ham, axis=1)
 
-# Generate the comprehensive fairness report
+# Generate fairness reports for all three models
+fairness_lite = fairness.generate_fairness_report(
+    y_true=y_true_labels, y_pred=lite_pred_labels,
+    meta_df=meta_test, class_names=config.CLASS_NAMES
+)
+fairness_heavy = fairness.generate_fairness_report(
+    y_true=y_true_labels, y_pred=heavy_pred_labels,
+    meta_df=meta_test, class_names=config.CLASS_NAMES
+)
 fairness_df = fairness.generate_fairness_report(
-    y_true=y_true_labels,
-    y_pred=dynamic_pred_labels,
-    meta_df=meta_test,
-    class_names=config.CLASS_NAMES
+    y_true=y_true_labels, y_pred=dynamic_pred_labels,
+    meta_df=meta_test, class_names=config.CLASS_NAMES
 )
 
 # Display results cleanly
@@ -328,3 +336,10 @@ else:
     print("Measures the raw rate at which a class is predicted for a specific subgroup.")
     pivot_dp = fairness_df.pivot(index='Subgroup', columns='Class', values='Demographic_Parity_Rate')
     print(pivot_dp.fillna('-'))
+
+    # 4. Fairness Disparity Gap (Gender)
+    print("\nPlotting fairness disparity gap...")
+    fig_disparity = visualization.plot_fairness_disparity(
+        fairness_lite, fairness_heavy, fairness_df, attribute='Sex'
+    )
+    plt.show()

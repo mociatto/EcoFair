@@ -913,3 +913,82 @@ def plot_gender_age_accuracy(y_true, lite_preds, heavy_preds, dynamic_preds, met
     plt.tight_layout()
     
     return fig
+
+
+def plot_fairness_disparity(fairness_lite, fairness_heavy, fairness_ecofair, attribute='Sex'):
+    """
+    Plot the Absolute TPR Gap (|TPR_Male - TPR_Female|) for dangerous classes.
+    
+    Lower gap indicates fairer performance across demographics.
+    
+    Args:
+        fairness_lite: DataFrame from generate_fairness_report for lite model
+        fairness_heavy: DataFrame from generate_fairness_report for heavy model
+        fairness_ecofair: DataFrame from generate_fairness_report for EcoFair (dynamic) model
+        attribute: 'Sex' or 'Age' - which demographic to compare (default: 'Sex')
+    
+    Returns:
+        matplotlib.figure.Figure: Figure with grouped bar chart
+    """
+    dangerous_classes = list(config.DANGEROUS_CLASSES)
+    
+    def _get_tpr_gap(df):
+        """For each dangerous class, compute |TPR_group1 - TPR_group2|. Ignore NaN."""
+        gaps = {}
+        for cls in dangerous_classes:
+            sub_prefix = 'Sex: ' if attribute == 'Sex' else 'Age '
+            df_cls = df[(df['Class'] == cls) & (df['Subgroup'].str.startswith(sub_prefix))]
+            if df_cls.empty:
+                gaps[cls] = np.nan
+                continue
+            # Strip " (n=...)" suffix if present (from main.py display formatting)
+            df_cls = df_cls.copy()
+            df_cls['_sub'] = df_cls['Subgroup'].str.replace(r'\s*\(n=\d+\)\s*$', '', regex=True).str.strip()
+            piv = df_cls.drop_duplicates('_sub').set_index('_sub')['Equal_Opportunity_TPR']
+            if attribute == 'Sex':
+                male_tpr = piv.get('Sex: Male', np.nan)
+                female_tpr = piv.get('Sex: Female', np.nan)
+                if pd.notna(male_tpr) and pd.notna(female_tpr):
+                    gaps[cls] = abs(float(male_tpr) - float(female_tpr))
+                else:
+                    gaps[cls] = np.nan
+            else:
+                vals = piv.dropna().astype(float).values
+                gaps[cls] = (float(np.max(vals)) - float(np.min(vals))) if len(vals) >= 2 else np.nan
+        return gaps
+    
+    gaps_lite = _get_tpr_gap(fairness_lite)
+    gaps_heavy = _get_tpr_gap(fairness_heavy)
+    gaps_ecofair = _get_tpr_gap(fairness_ecofair)
+    
+    x = np.arange(len(dangerous_classes))
+    width = 0.25
+    
+    def _safe(v):
+        return v if pd.notna(v) else 0.0
+    
+    fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+    bars1 = ax.bar(x - width, [_safe(gaps_lite.get(c, np.nan)) for c in dangerous_classes],
+                   width, label='Pure Lite', color='skyblue')
+    bars2 = ax.bar(x, [_safe(gaps_heavy.get(c, np.nan)) for c in dangerous_classes],
+                   width, label='Pure Heavy', color='orangered')
+    bars3 = ax.bar(x + width, [_safe(gaps_ecofair.get(c, np.nan)) for c in dangerous_classes],
+                   width, label='EcoFair', color='lightgreen')
+    
+    ax.set_xlabel('Dangerous Class', fontsize=12)
+    ax.set_ylabel('Absolute TPR Disparity', fontsize=12)
+    ax.set_title('Gender Disparity in Cancer Detection (Equal Opportunity Gap)', fontsize=14, pad=15)
+    ax.set_xticks(x)
+    ax.set_xticklabels(dangerous_classes)
+    ax.legend(loc='upper right', fontsize=10)
+    ax.set_ylim(bottom=0)
+    ax.grid(True, alpha=0.3, axis='y', linestyle='--')
+    ax.xaxis.grid(False)
+    
+    # Interpretative text box
+    props = dict(boxstyle='round', facecolor='wheat', alpha=0.8)
+    ax.text(0.02, 0.98, 'Lower gap indicates fairer performance across demographic.',
+            transform=ax.transAxes, fontsize=10, verticalalignment='top', bbox=props)
+    
+    plt.tight_layout()
+    return fig
