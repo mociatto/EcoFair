@@ -159,16 +159,24 @@ print(f"  Heavy Weight: {optimal_config['heavy_weight']:.2f}")
 print(f"  Accuracy: {optimal_config['accuracy']:.4f}")
 print(f"  Intervention Rate: {optimal_config['intervention_rate']:.2f}%")
 
-# %% Apply optimized routing on test set
+# %% Apply optimized routing on test set (with neurosymbolic safety override)
 print("\nApplying routing on test set...")
 lite_preds_test = lite_model.predict([X_lite_test, X_tab_test], batch_size=config.BATCH_SIZE, verbose=0)
 heavy_preds_test = heavy_model.predict([X_heavy_test, X_tab_test], batch_size=config.BATCH_SIZE, verbose=0)
 
-final_preds_ham, route_mask_ham = routing.apply_threshold_routing(
+# Get patient risk scores for neurosymbolic safety gate (matches EcoFair_Main.py)
+if 'risk_score' in meta_test.columns:
+    patient_risk = meta_test['risk_score'].values
+else:
+    patient_risk = features.calculate_cumulative_risk(meta_test, risk_scaler)
+
+final_preds_ham, route_mask_ham, route_components = routing.apply_threshold_routing(
     lite_preds_test, heavy_preds_test,
     entropy_threshold=optimal_config['entropy_t'],
     gap_threshold=optimal_config['gap_t'],
-    heavy_weight=optimal_config['heavy_weight']
+    heavy_weight=optimal_config['heavy_weight'],
+    patient_risk=patient_risk,
+    safety_threshold=0.75
 )
 
 y_true_test = np.argmax(y_test, axis=1)
@@ -183,6 +191,9 @@ print(f"  Lite Accuracy: {acc_lite:.4f}")
 print(f"  Heavy Accuracy: {acc_heavy:.4f}")
 print(f"  EcoFair Accuracy: {acc_ham:.4f}")
 print(f"  Routing Rate: {route_mask_ham.sum() / len(route_mask_ham) * 100:.2f}%")
+print(f"  Routed by Uncertainty: {route_components['uncertainty'].sum()}")
+print(f"  Routed by Ambiguity:   {route_components['ambiguity'].sum()}")
+print(f"  Routed by Safety:      {route_components['safety'].sum()}")
 
 # Calculate entropy and safe-danger gap for test set (for routing breakdown)
 entropy_test = routing.calculate_entropy(lite_preds_test)
@@ -213,7 +224,7 @@ visualization.plot_value_added_bars(
 )
 visualization.plot_routing_breakdown_doughnut(
     entropy_test, safe_danger_gap_test, route_mask_ham, len(route_mask_ham),
-    ax=axes_va_doughnut[1]
+    ax=axes_va_doughnut[1], route_components=route_components
 )
 plt.tight_layout()
 plt.show()

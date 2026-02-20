@@ -552,11 +552,12 @@ def plot_battery_decay(lite_joules, heavy_joules, routing_rate, capacity_joules=
     return fig
 
 
-def plot_routing_breakdown_doughnut(entropy, safe_danger_gap, route_mask, total_samples, ax=None):
+def plot_routing_breakdown_doughnut(entropy, safe_danger_gap, route_mask, total_samples,
+                                    ax=None, route_components=None):
     """
     Plot doughnut chart showing routing breakdown reasons.
     
-    Replicates logic from Cell 12 of EcoFair_Main.py.
+    Replicates logic from Cell 12 of EcoFair_Main.py exactly.
     Shows reasons for Heavy Model Intervention: Uncertainty, Ambiguity, Safety, Multiple.
     
     Args:
@@ -565,47 +566,51 @@ def plot_routing_breakdown_doughnut(entropy, safe_danger_gap, route_mask, total_
         route_mask: Boolean array indicating which samples were routed to heavy
         total_samples: Total number of samples
         ax: Optional matplotlib axes. If None, a new figure is created.
+        route_components: Optional dict with keys 'uncertainty', 'ambiguity', 'safety'
+                          (boolean arrays, full-length). When provided these are used
+                          directly so the safety gate is accurate.
     
     Returns:
         matplotlib.figure.Figure: Figure object with doughnut chart
     """
-    # Calculate routing reasons
-    entropy_threshold = config.ENTROPY_THRESHOLD
-    gap_threshold = config.SAFE_DANGER_GAP_THRESHOLD
-    
-    routed_indices = np.where(route_mask)[0]
-    total_routed = len(routed_indices)
+    total_routed = route_mask.sum()
     
     if total_routed == 0:
         uncertainty_pct = ambiguity_pct = safety_pct = multiple_pct = 0
     else:
-        uncertainty_mask = entropy[routed_indices] > entropy_threshold
-        ambiguity_mask = safe_danger_gap[routed_indices] < gap_threshold
+        if route_components is not None:
+            # Use pre-computed components from apply_threshold_routing (most accurate)
+            route_uncertainty = route_components['uncertainty'][route_mask]
+            route_ambiguity   = route_components['ambiguity'][route_mask]
+            route_safety      = route_components['safety'][route_mask]
+        else:
+            # Fallback: recompute from entropy/gap only (no safety gate)
+            entropy_threshold = config.ENTROPY_THRESHOLD
+            gap_threshold     = config.SAFE_DANGER_GAP_THRESHOLD
+            route_uncertainty = entropy[route_mask] > entropy_threshold
+            route_ambiguity   = safe_danger_gap[route_mask] < gap_threshold
+            route_safety      = np.zeros(total_routed, dtype=bool)
         
-        # Safety (Patient Risk) - high risk score
-        # For now, use a simple heuristic: if safe_danger_gap is very negative
-        safety_mask = safe_danger_gap[routed_indices] < -0.5
+        # Mutually-exclusive breakdown (matches EcoFair_Main.py lines 887-895)
+        reason_uncertainty_only = route_uncertainty & ~route_ambiguity & ~route_safety
+        reason_ambiguity_only   = route_ambiguity   & ~route_uncertainty & ~route_safety
+        reason_safety_only      = route_safety      & ~route_uncertainty & ~route_ambiguity
+        reason_multiple         = route_mask[route_mask] & ~(reason_uncertainty_only |
+                                                             reason_ambiguity_only |
+                                                             reason_safety_only)
+        # reason_multiple covers everything else that was routed
+        reason_multiple = ~(reason_uncertainty_only | reason_ambiguity_only | reason_safety_only)
         
-        # Multiple reasons
-        multiple_mask = uncertainty_mask & ambiguity_mask
+        uncertainty_count = reason_uncertainty_only.sum()
+        ambiguity_count   = reason_ambiguity_only.sum()
+        safety_count      = reason_safety_only.sum()
+        multiple_count    = reason_multiple.sum()
         
-        # Count each category (mutually exclusive)
-        uncertainty_only = uncertainty_mask & ~ambiguity_mask & ~safety_mask & ~multiple_mask
-        ambiguity_only = ambiguity_mask & ~uncertainty_mask & ~safety_mask & ~multiple_mask
-        safety_only = safety_mask & ~uncertainty_mask & ~ambiguity_mask & ~multiple_mask
-        
-        uncertainty_count = uncertainty_only.sum()
-        ambiguity_count = ambiguity_only.sum()
-        safety_count = safety_only.sum()
-        multiple_count = multiple_mask.sum()
-        
-        # Normalize to percentages
-        total_categorized = uncertainty_count + ambiguity_count + safety_count + multiple_count
-        if total_categorized > 0:
-            uncertainty_pct = uncertainty_count / total_categorized * 100
-            ambiguity_pct = ambiguity_count / total_categorized * 100
-            safety_pct = safety_count / total_categorized * 100
-            multiple_pct = multiple_count / total_categorized * 100
+        if total_routed > 0:
+            uncertainty_pct = uncertainty_count / total_routed * 100
+            ambiguity_pct   = ambiguity_count   / total_routed * 100
+            safety_pct      = safety_count      / total_routed * 100
+            multiple_pct    = multiple_count    / total_routed * 100
         else:
             uncertainty_pct = ambiguity_pct = safety_pct = multiple_pct = 0
     

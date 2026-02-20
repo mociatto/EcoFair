@@ -119,13 +119,16 @@ class SafetyFirstOptimizer:
             return best, results
 
 
-def apply_threshold_routing(lite_preds, heavy_preds, entropy_threshold=None, gap_threshold=None, heavy_weight=0.7, class_names=None, safe_classes=None, danger_classes=None):
+def apply_threshold_routing(lite_preds, heavy_preds, entropy_threshold=None, gap_threshold=None,
+                            heavy_weight=0.7, patient_risk=None, safety_threshold=0.75,
+                            class_names=None, safe_classes=None, danger_classes=None):
     """
-    Apply standard threshold-based routing (for HAM10000).
+    Apply standard threshold-based routing with neurosymbolic safety override (for HAM10000).
     
-    Routes samples to heavy model if:
-    - Entropy > entropy_threshold, OR
-    - Safe-danger gap < gap_threshold
+    Routes samples to heavy model if ANY of:
+    - Entropy > entropy_threshold  (uncertainty)
+    - Safe-danger gap < gap_threshold  (ambiguity)
+    - patient_risk > safety_threshold  (neurosymbolic safety gate)
     
     Args:
         lite_preds: Lite model predictions, shape (n_samples, n_classes)
@@ -133,14 +136,17 @@ def apply_threshold_routing(lite_preds, heavy_preds, entropy_threshold=None, gap
         entropy_threshold: Entropy threshold (default: config.ENTROPY_THRESHOLD)
         gap_threshold: Safe-danger gap threshold (default: config.SAFE_DANGER_GAP_THRESHOLD)
         heavy_weight: Weight for heavy model in ensemble (default: 0.7)
+        patient_risk: Risk scores per sample (n_samples,). If None, safety gate is skipped.
+        safety_threshold: Risk score threshold for safety override (default: 0.75)
         class_names: List of class names (default: config.CLASS_NAMES)
         safe_classes: List of safe class names (default: config.SAFE_CLASSES)
         danger_classes: List of dangerous class names (default: config.DANGEROUS_CLASSES)
     
     Returns:
-        tuple: (final_preds, route_mask)
+        tuple: (final_preds, route_mask, route_components)
             - final_preds: Final predictions after routing, shape (n_samples, n_classes)
-            - route_mask: Boolean array indicating which samples were routed to heavy model
+            - route_mask: Boolean array of samples routed to heavy model
+            - route_components: dict with keys 'uncertainty', 'ambiguity', 'safety'
     """
     if entropy_threshold is None:
         entropy_threshold = config.ENTROPY_THRESHOLD
@@ -163,14 +169,25 @@ def apply_threshold_routing(lite_preds, heavy_preds, entropy_threshold=None, gap
     prob_danger = lite_preds[:, danger_indices].sum(axis=1)
     safe_danger_gap = prob_safe - prob_danger
     
-    # Create routing mask
-    route_mask = (entropy > entropy_threshold) | (safe_danger_gap < gap_threshold)
+    # Three routing conditions (matching EcoFair_Main.py exactly)
+    route_uncertainty = entropy > entropy_threshold
+    route_ambiguity   = safe_danger_gap < gap_threshold
+    route_safety      = (patient_risk > safety_threshold) if patient_risk is not None \
+                        else np.zeros(len(lite_preds), dtype=bool)
+    
+    route_mask = route_uncertainty | route_ambiguity | route_safety
     
     # Apply ensemble routing
     final_preds = lite_preds.copy()
     final_preds[route_mask] = (1 - heavy_weight) * lite_preds[route_mask] + heavy_weight * heavy_preds[route_mask]
     
-    return final_preds, route_mask
+    route_components = {
+        'uncertainty': route_uncertainty,
+        'ambiguity':   route_ambiguity,
+        'safety':      route_safety,
+    }
+    
+    return final_preds, route_mask, route_components
 
 
 def apply_budget_routing(lite_preds, heavy_preds, budget=0.35, heavy_weight=0.5, class_names=None, safe_classes=None, danger_classes=None):
