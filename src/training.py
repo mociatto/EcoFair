@@ -227,10 +227,14 @@ def run_cv_pipeline(X_heavy, X_lite, X_tab, y, meta_df, n_splits=5, risk_scaler=
             )
             optimal_config, _ = optimizer.optimize()
             
-            if risk_scaler is not None:
-                patient_risk = features.calculate_cumulative_risk(meta_test, risk_scaler)
-            elif 'risk_score' in meta_test.columns:
+            # Prefer the pre-computed risk_score column (always uses dataset-specific
+            # localization scores). Recomputing here without localization_risk_scores
+            # would silently fall back to HAM10000 scores (max 0.74), making the
+            # scaled risk cap at 0.74 — just below the 0.75 safety threshold.
+            if 'risk_score' in meta_test.columns:
                 patient_risk = meta_test['risk_score'].values
+            elif risk_scaler is not None:
+                patient_risk = features.calculate_cumulative_risk(meta_test, risk_scaler)
             else:
                 patient_risk = None
             
