@@ -17,10 +17,10 @@ def compute_localization_risk_scores(meta_df: pd.DataFrame, dangerous_classes=No
     """
     Empirically derive localization risk scores from a dataset's malignancy rates.
     
-    For each localization site, computes the fraction of samples that belong to a dangerous
-    (malignant) class, then normalises those fractions to [0, 1] with min-max scaling.
-    This is the principled approach that reproduces the HAM10000 hardcoded values when
-    called on HAM data, and generalises to any other dataset automatically.
+    For each localization site, computes the raw fraction of samples that belong to a
+    dangerous (malignant) class.  Values are already in [0, 1] as proportions, e.g.
+    scalp = 0.06 means 6 % of scalp lesions in that dataset are malignant.
+    No min-max rescaling is applied so scores are directly comparable across datasets.
     
     Args:
         meta_df: DataFrame with diagnosis and localization columns
@@ -28,7 +28,8 @@ def compute_localization_risk_scores(meta_df: pd.DataFrame, dangerous_classes=No
                            Defaults to config.DANGEROUS_CLASSES if None.
     
     Returns:
-        dict: {localization_site (lowercase): risk_score [0,1]}
+        dict: {localization_site (lowercase): raw_malignancy_rate}
+              Returns {} if the required columns cannot be found.
     """
     if dangerous_classes is None:
         dangerous_classes = config.DANGEROUS_CLASSES
@@ -56,43 +57,38 @@ def compute_localization_risk_scores(meta_df: pd.DataFrame, dangerous_classes=No
     
     if dx_col is None or loc_col is None:
         print("Warning: Cannot compute localization risk scores — diagnosis or localization column missing.")
-        return dict(config.LOCALIZATION_RISK_SCORES)
+        return {}
     
     dangerous_set = {c.lower().strip() for c in dangerous_classes}
     df['_is_malignant'] = df[dx_col].astype(str).str.lower().str.strip().isin(dangerous_set).astype(float)
     df['_loc'] = df[loc_col].astype(str).str.lower().str.strip()
     
-    # Malignancy rate per site (raw, in [0, 1])
-    rates = df.groupby('_loc')['_is_malignant'].mean()
+    # Raw malignancy rate per site: fraction of samples at that site that are dangerous.
+    # e.g. if 6% of all samples at 'scalp' carry a dangerous diagnosis → score = 0.06
+    rates = df.groupby('_loc')['_is_malignant'].mean().round(4)
     
-    # Min-max normalise so the most malignant site scores 1.0 and the safest scores 0.0
-    # (Identical to what was done manually for HAM10000 in config.py)
-    r_min, r_max = rates.min(), rates.max()
-    if r_max > r_min:
-        scores = ((rates - r_min) / (r_max - r_min)).round(2)
-    else:
-        scores = rates.copy()
-    
-    return scores.to_dict()
+    return rates.to_dict()
 
 
 def get_sun_exposure_score(localization: str, risk_scores: dict = None) -> float:
     """
-    Look up the sun/malignancy exposure risk score for a body part.
+    Look up the raw malignancy rate for a body-part localization site.
     
     Args:
         localization: String representing body part/location
-        risk_scores: Optional dict {site: score}. Falls back to config.LOCALIZATION_RISK_SCORES.
+        risk_scores: Dict {site: raw_malignancy_rate} from compute_localization_risk_scores.
+                     When None or empty, returns 0.05 as a neutral fallback.
     
     Returns:
-        float: Risk score, or the median of the provided dict (or 0.04) if not found
+        float: Raw malignancy rate for the site, or the median of the provided dict
+               if the site is not found, or 0.05 if no dict is provided.
     """
-    if risk_scores is None:
-        risk_scores = config.LOCALIZATION_RISK_SCORES
+    if not risk_scores:
+        return 0.05
     if localization is None or not isinstance(localization, str):
-        return float(np.median(list(risk_scores.values()))) if risk_scores else 0.04
+        return float(np.median(list(risk_scores.values())))
     loc_normalized = localization.strip().lower()
-    default = float(np.median(list(risk_scores.values()))) if risk_scores else 0.04
+    default = float(np.median(list(risk_scores.values())))
     return risk_scores.get(loc_normalized, default)
 
 
@@ -113,8 +109,8 @@ def prepare_tabular_features(meta_df: pd.DataFrame, localization_risk_scores: di
     
     Args:
         meta_df: DataFrame with metadata columns
-        localization_risk_scores: Optional dict {site: score} from compute_localization_risk_scores.
-                                   Falls back to config.LOCALIZATION_RISK_SCORES if None.
+        localization_risk_scores: Optional dict {site: raw_malignancy_rate} from
+                                   compute_localization_risk_scores. Falls back to median=0.05 if None.
     
     Returns:
         tuple: (tabular_features, scaler, sex_encoder, loc_encoder, risk_scaler)
