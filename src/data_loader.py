@@ -14,7 +14,8 @@ from sklearn.model_selection import StratifiedGroupKFold
 from . import config
 
 
-def load_dataset_features(heavy_dir: str, lite_dir: str, meta_path: str):
+def load_dataset_features(heavy_dir: str, lite_dir: str, meta_path: str,
+                          required_columns: list = None):
     """
     Load and align features with metadata using flexible zipper logic.
 
@@ -27,6 +28,10 @@ def load_dataset_features(heavy_dir: str, lite_dir: str, meta_path: str):
         heavy_dir: Path to directory containing features.npy and ids.npy
         lite_dir: Path to directory containing features.npy and ids.npy
         meta_path: Path to metadata CSV
+        required_columns: Column names that must be non-null for a row to be
+                          kept. The front-end injects this so the loader stays
+                          dataset-agnostic. Defaults to the diagnosis column
+                          only (auto-detected).
 
     Returns:
         tuple: (X_heavy, X_lite, aligned_meta)
@@ -44,11 +49,17 @@ def load_dataset_features(heavy_dir: str, lite_dir: str, meta_path: str):
 
     if 'sex' not in metadata.columns and 'gender' not in metadata.columns:
         metadata['sex'] = 'unknown'
-    drop_cols = ['image_id']
-    for c in ['dx', 'diagnostic', 'diagnosis', 'label']:
-        if c in metadata.columns:
-            drop_cols.append(c)
-            break
+
+    if required_columns is not None:
+        # Front-end explicitly specifies which columns must be present
+        drop_cols = ['image_id'] + [c for c in required_columns if c != 'image_id' and c in metadata.columns]
+    else:
+        # Minimal safe default: only require the diagnosis column
+        drop_cols = ['image_id']
+        for c in ['dx', 'diagnostic', 'diagnosis', 'label']:
+            if c in metadata.columns:
+                drop_cols.append(c)
+                break
     metadata = metadata.dropna(subset=drop_cols)
 
     # Clean image IDs (strip extensions)
