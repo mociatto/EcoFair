@@ -14,21 +14,19 @@ from sklearn.model_selection import StratifiedGroupKFold
 from . import config
 
 
-def load_dataset_features(heavy_dir: str, lite_dir: str, meta_path: str,
-                          meta_preprocessor=None):
+def load_dataset_features(heavy_dir: str, lite_dir: str, meta_path: str):
     """
     Load and align features with metadata using flexible zipper logic.
 
     Finds the intersection of IDs between metadata, heavy features, and lite
     features, then aligns all three to match exactly. Handles both image_id
     and img_id columns, and strips .jpg/.png extensions for matching.
+    Dataset-agnostic: no dataset-specific logic.
 
     Args:
         heavy_dir: Path to directory containing features.npy and ids.npy
         lite_dir: Path to directory containing features.npy and ids.npy
         meta_path: Path to metadata CSV
-        meta_preprocessor: Optional callable(DataFrame) -> DataFrame to apply
-                           dataset-specific preprocessing before alignment.
 
     Returns:
         tuple: (X_heavy, X_lite, aligned_meta)
@@ -43,10 +41,6 @@ def load_dataset_features(heavy_dir: str, lite_dir: str, meta_path: str,
         metadata = metadata.rename(columns={'img_id': 'image_id'})
     if 'image_id' not in metadata.columns:
         raise ValueError("Metadata must contain 'image_id' or 'img_id' column")
-
-    # Optional preprocessing (e.g. region->localization mapping)
-    if meta_preprocessor is not None:
-        metadata = meta_preprocessor(metadata)
 
     if 'sex' not in metadata.columns and 'gender' not in metadata.columns:
         metadata['sex'] = 'unknown'

@@ -83,8 +83,8 @@ def get_class_weights(y_train, class_names):
 
 
 def run_cv_pipeline(X_heavy, X_lite, X_tab, y, meta_df, class_names, safe_classes, dangerous_classes,
-                    n_splits=5, risk_scaler=None, routing_strategy='threshold', budget=0.35,
-                    energy_path_lite=None, energy_path_heavy=None):
+                    lite_energy_dir, heavy_energy_dir,
+                    n_splits=5, risk_scaler=None, routing_strategy='threshold', budget=0.35):
     """
     Run 5-Fold Stratified Group Cross-Validation with Out-of-Fold (OOF) tracking.
     
@@ -104,8 +104,8 @@ def run_cv_pipeline(X_heavy, X_lite, X_tab, y, meta_df, class_names, safe_classe
         class_names: Class names for routing (required).
         safe_classes: Safe class names (required).
         dangerous_classes: Dangerous class names (required).
-        energy_path_lite: Path to directory containing energy_stats.json for lite model.
-        energy_path_heavy: Path to directory containing energy_stats.json for heavy model.
+        lite_energy_dir: Path to directory containing energy_stats.json for lite model (required).
+        heavy_energy_dir: Path to directory containing energy_stats.json for heavy model (required).
     
     Returns:
         tuple: (fold_metrics, oof_lite, oof_heavy, oof_dynamic, route_mask_oof, route_components_oof)
@@ -118,6 +118,8 @@ def run_cv_pipeline(X_heavy, X_lite, X_tab, y, meta_df, class_names, safe_classe
     
     if class_names is None or safe_classes is None or dangerous_classes is None:
         raise ValueError("class_names, safe_classes, and dangerous_classes are required")
+    if lite_energy_dir is None or heavy_energy_dir is None:
+        raise ValueError("lite_energy_dir and heavy_energy_dir are required")
     n_samples, n_classes = y.shape
     oof_lite = np.zeros_like(y, dtype=np.float32)
     oof_heavy = np.zeros_like(y, dtype=np.float32)
@@ -134,8 +136,8 @@ def run_cv_pipeline(X_heavy, X_lite, X_tab, y, meta_df, class_names, safe_classe
         'routing_rate': [], 'energy_cost': []
     }
     
-    joules_lite = utils.load_energy_stats(energy_path_lite) if energy_path_lite else None
-    joules_heavy = utils.load_energy_stats(energy_path_heavy) if energy_path_heavy else None
+    joules_lite = utils.load_energy_stats(lite_energy_dir)
+    joules_heavy = utils.load_energy_stats(heavy_energy_dir)
     joules_lite = joules_lite if joules_lite is not None else 1.0
     joules_heavy = joules_heavy if joules_heavy is not None else 2.5
     
