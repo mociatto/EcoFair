@@ -2,7 +2,8 @@
 
 EcoFair is a Vertical Federated Learning (VFL) framework for skin lesion diagnosis that dynamically routes each patient case between a lightweight and a heavyweight model. It targets three simultaneous objectives: clinical accuracy, energy efficiency, and demographic fairness — without requiring access to raw images at inference time.
 
-![EcoFair Framework](fig/framework.png)
+<!-- Make the image appear smaller by setting width via HTML -->
+<img src="fig/framework.png" alt="EcoFair Framework" width="400"/>
 
 ---
 
