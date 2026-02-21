@@ -11,7 +11,7 @@ EcoFair is a Vertical Federated Learning (VFL) framework for skin lesion diagnos
 
 ## System Design
 
-- **Offline (once):** Two image encoders (lite and heavy) extract feature vectors from images; outputs are saved as `features.npy` and `ids.npy` per dataset (see [feature_extraction/](feature_extraction/)).
+- **Offline (once):** The [feature extraction](feature_extraction/) step runs lite and heavy image encoders on each dataset, saving feature arrays and **measured energy per sample** (joules) per model and dataset. That energy data is stored and consumed by the main pipeline so that accuracy, routing, and battery impact are evaluated with real measurements. Energy tracking is a core part of the architecture.
 - **At inference:** For each sample, a tabular client handles metadata (age, sex, localization) and a VFL server fuses image embeddings with tabular features to produce a diagnosis probability vector.
 - **Routing:** A three-tier gate decides per sample whether to use only the lite path or to escalate to the heavy model: (1) **Uncertainty** – lite output entropy above a normalised threshold; (2) **Ambiguity** – small gap between safe vs dangerous class probabilities; (3) **Safety** – neurosymbolic risk (age × localization malignancy rate) above a clinical threshold. If any gate fires, the heavy model is used.
 
@@ -21,7 +21,7 @@ EcoFair is a Vertical Federated Learning (VFL) framework for skin lesion diagnos
 
 ## Model Architecture
 
-Lite and heavy branches share the same VFL layout: image adapter, tabular client, and shared server head. They differ only in the source of image features. **Encoder choice:** MobileNetV3Small is used as the lite backbone and ResNet50 as the heavy backbone because they are among the smallest representative models in the mobile and residual categories, giving a clear accuracy vs efficiency trade-off without scaling to very large architectures.
+Lite and heavy branches share the same VFL layout: image adapter, tabular client, and shared server head. They differ only in the source of image features. The feature extractors support several lite and heavy backbones; the main pipeline uses **MobileNetV3Small** (lite) and **ResNet50** (heavy) as the default pair because they are among the smallest in their categories, giving a clear accuracy vs efficiency trade-off.
 
 ![Model Architecture](fig/models.png)
 
@@ -69,7 +69,7 @@ ecofair-ham10k.ipynb       # Main pipeline (HAM10000)
 ecofair-pad-ufes-20.ipynb  # Main pipeline (PAD-UFES-20)
 ecofair-bcn20k.ipynb       # Main pipeline (BCN20000)
 
-feature_extraction/        # Image embedding notebooks (run before main pipeline)
+feature_extraction/        # Embedding + energy extraction (run before main pipeline)
 ├── image-feature-extractor-lite.ipynb
 ├── image-feature-extractor-heavy.ipynb
 └── README.md
