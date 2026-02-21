@@ -17,3 +17,8 @@
 
 # Don't ignore .gitignore itself
 !.gitignore
+
+# development files
+main.ipynb
+main_pad.py
+main.py

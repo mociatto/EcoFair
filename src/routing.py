@@ -34,8 +34,7 @@ class SafetyFirstOptimizer:
     """
     Optimizer that finds thresholds meeting a minimum accuracy constraint.
     
-    Used for HAM10000 dataset to find optimal routing thresholds that maintain
-    accuracy while minimizing intervention rate.
+    Finds optimal routing thresholds that maintain accuracy while minimizing intervention rate.
     """
     
     def __init__(self, lite_preds, heavy_preds, y_true, entropy, safe_danger_gap, heavy_baseline_acc):
@@ -119,11 +118,11 @@ class SafetyFirstOptimizer:
             return best, results
 
 
-def apply_threshold_routing(lite_preds, heavy_preds, entropy_threshold=None, gap_threshold=None,
-                            heavy_weight=0.7, patient_risk=None, safety_threshold=0.75,
-                            class_names=None, safe_classes=None, danger_classes=None):
+def apply_threshold_routing(lite_preds, heavy_preds, class_names, safe_classes, danger_classes,
+                            entropy_threshold=None, gap_threshold=None,
+                            heavy_weight=0.7, patient_risk=None, safety_threshold=0.75):
     """
-    Apply standard threshold-based routing with neurosymbolic safety override (for HAM10000).
+    Apply threshold-based routing with neurosymbolic safety override.
     
     Routes samples to heavy model if ANY of:
     - Entropy > entropy_threshold  (uncertainty)
@@ -138,9 +137,9 @@ def apply_threshold_routing(lite_preds, heavy_preds, entropy_threshold=None, gap
         heavy_weight: Weight for heavy model in ensemble (default: 0.7)
         patient_risk: Risk scores per sample (n_samples,). If None, safety gate is skipped.
         safety_threshold: Risk score threshold for safety override (default: 0.75)
-        class_names: List of class names (default: config.CLASS_NAMES)
-        safe_classes: List of safe class names (default: config.SAFE_CLASSES)
-        danger_classes: List of dangerous class names (default: config.DANGEROUS_CLASSES)
+        class_names: List of class names (required)
+        safe_classes: List of safe class names (required)
+        danger_classes: List of dangerous class names (required)
     
     Returns:
         tuple: (final_preds, route_mask, route_components)
@@ -148,17 +147,12 @@ def apply_threshold_routing(lite_preds, heavy_preds, entropy_threshold=None, gap
             - route_mask: Boolean array of samples routed to heavy model
             - route_components: dict with keys 'uncertainty', 'ambiguity', 'safety'
     """
+    if class_names is None or safe_classes is None or danger_classes is None:
+        raise ValueError("class_names, safe_classes, and danger_classes are required")
     if entropy_threshold is None:
         entropy_threshold = config.ENTROPY_THRESHOLD
     if gap_threshold is None:
         gap_threshold = config.SAFE_DANGER_GAP_THRESHOLD
-    if class_names is None:
-        class_names = config.CLASS_NAMES
-    if safe_classes is None:
-        safe_classes = config.SAFE_CLASSES
-    if danger_classes is None:
-        danger_classes = config.DANGEROUS_CLASSES
-    
     # Calculate entropy
     entropy = calculate_entropy(lite_preds)
     
@@ -190,9 +184,10 @@ def apply_threshold_routing(lite_preds, heavy_preds, entropy_threshold=None, gap
     return final_preds, route_mask, route_components
 
 
-def apply_budget_routing(lite_preds, heavy_preds, budget=0.35, heavy_weight=0.5, class_names=None, safe_classes=None, danger_classes=None):
+def apply_budget_routing(lite_preds, heavy_preds, class_names, safe_classes, danger_classes,
+                        budget=0.35, heavy_weight=0.5):
     """
-    Apply budget-constrained routing (for PAD-UFES-20).
+    Apply budget-constrained routing.
     
     Routes the top K most uncertain samples to heavy model, where K = n_samples * budget.
     Uncertainty is measured by confusion_score = entropy + (1 - safe_danger_gap).
@@ -202,9 +197,9 @@ def apply_budget_routing(lite_preds, heavy_preds, budget=0.35, heavy_weight=0.5,
         heavy_preds: Heavy model predictions, shape (n_samples, n_classes)
         budget: Fraction of samples to route to heavy model (default: 0.35)
         heavy_weight: Weight for heavy model in ensemble (default: 0.5)
-        class_names: List of class names (default: config.CLASS_NAMES)
-        safe_classes: List of safe class names (default: config.SAFE_CLASSES)
-        danger_classes: List of dangerous class names (default: config.DANGEROUS_CLASSES)
+        class_names: List of class names (required)
+        safe_classes: List of safe class names (required)
+        danger_classes: List of dangerous class names (required)
     
     Returns:
         tuple: (final_preds, route_mask, confusion_score)
@@ -212,13 +207,8 @@ def apply_budget_routing(lite_preds, heavy_preds, budget=0.35, heavy_weight=0.5,
             - route_mask: Boolean array indicating which samples were routed to heavy model
             - confusion_score: Confusion score for each sample, shape (n_samples,)
     """
-    if class_names is None:
-        class_names = config.CLASS_NAMES
-    if safe_classes is None:
-        safe_classes = config.SAFE_CLASSES
-    if danger_classes is None:
-        danger_classes = config.DANGEROUS_CLASSES
-    
+    if class_names is None or safe_classes is None or danger_classes is None:
+        raise ValueError("class_names, safe_classes, and danger_classes are required")
     # Calculate entropy
     entropy = calculate_entropy(lite_preds)
     

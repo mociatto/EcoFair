@@ -8,9 +8,6 @@ One-vs-Rest evaluation strategy for every class across demographic subgroups.
 import numpy as np
 import pandas as pd
 
-from . import config
-
-
 def _ensure_1d_class_indices(y):
     """Convert one-hot or probability arrays to 1D class indices."""
     if len(np.asarray(y).shape) > 1:
@@ -79,7 +76,7 @@ def _compute_ovr_confusion(y_true, y_pred, mask, class_index):
     return tp, fp, tn, fn
 
 
-def generate_fairness_report(y_true, y_pred, meta_df, class_names=None):
+def generate_fairness_report(y_true, y_pred, meta_df, class_names):
     """
     Generate a comprehensive fairness report using One-vs-Rest per class.
     
@@ -92,15 +89,14 @@ def generate_fairness_report(y_true, y_pred, meta_df, class_names=None):
         y_true: True labels (class indices or one-hot), shape (n_samples,) or (n_samples, n_classes)
         y_pred: Predictions (class indices or one-hot), shape (n_samples,) or (n_samples, n_classes)
         meta_df: DataFrame with metadata columns ('age', 'sex' or 'gender')
-        class_names: List of class names. If None, uses config.CLASS_NAMES
+        class_names: List of class names (required).
     
     Returns:
         pandas.DataFrame: Fairness report with columns:
             ['Subgroup', 'Class', 'Count', 'Accuracy', 'Demographic_Parity_Rate', 'Equal_Opportunity_TPR']
     """
     if class_names is None:
-        class_names = config.CLASS_NAMES
-    
+        raise ValueError("class_names is required")
     y_true = _ensure_1d_class_indices(y_true)
     y_pred = _ensure_1d_class_indices(y_pred)
     

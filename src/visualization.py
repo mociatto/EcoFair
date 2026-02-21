@@ -24,7 +24,7 @@ plt.rcParams['legend.edgecolor'] = 'black'
 plt.rcParams['legend.facecolor'] = 'white'
 
 
-def plot_metadata_distributions(meta_df, dataset_name='HAM10000', dangerous_classes=None):
+def plot_metadata_distributions(meta_df, dangerous_classes, title_suffix=''):
     """
     Plot metadata distributions with malignancy rate overlays.
     
@@ -34,16 +34,14 @@ def plot_metadata_distributions(meta_df, dataset_name='HAM10000', dangerous_clas
     
     Args:
         meta_df: DataFrame with metadata columns (age, localization/region, dx/diagnostic/diagnosis)
-        dataset_name: Name of dataset (for title)
-        dangerous_classes: List of class names considered malignant.
-                           Defaults to config.DANGEROUS_CLASSES if None.
+        dangerous_classes: List of class names considered malignant (required).
+        title_suffix: Optional string appended to figure title.
     
     Returns:
         matplotlib.figure.Figure: Figure object with two subplots
     """
     if dangerous_classes is None:
-        dangerous_classes = config.DANGEROUS_CLASSES
-    
+        raise ValueError("dangerous_classes is required")
     meta_df_copy = meta_df.copy()
     
     # Detect diagnosis column dynamically
@@ -101,7 +99,7 @@ def plot_metadata_distributions(meta_df, dataset_name='HAM10000', dangerous_clas
     
     # Create figure
     fig, axes = plt.subplots(1, 2, figsize=(16, 6))
-    fig.suptitle(f'{dataset_name} — Metadata Distributions', fontsize=15, fontweight='normal', y=1.01)
+    fig.suptitle(f'Metadata Distributions{title_suffix}', fontsize=15, fontweight='normal', y=1.01)
     
     # Age distribution
     ax1 = axes[0]
@@ -154,25 +152,22 @@ def plot_metadata_distributions(meta_df, dataset_name='HAM10000', dangerous_clas
     return fig
 
 
-def plot_confusion_matrix_comparison(y_true, lite_preds, heavy_preds, dynamic_preds, class_names=None):
+def plot_confusion_matrix_comparison(y_true, lite_preds, heavy_preds, dynamic_preds, class_names):
     """
     Plot side-by-side confusion matrices for Lite, Heavy, and Dynamic systems.
-    
-    Replicates logic from Cell 12b of EcoFair_Main.py.
     
     Args:
         y_true: True labels (class indices), shape (n_samples,)
         lite_preds: Lite predictions (class indices or probabilities)
         heavy_preds: Heavy predictions (class indices or probabilities)
         dynamic_preds: Dynamic predictions (class indices or probabilities)
-        class_names: List of class names. If None, uses config.CLASS_NAMES
+        class_names: List of class names (required).
     
     Returns:
         matplotlib.figure.Figure: Figure object with three subplots
     """
     if class_names is None:
-        class_names = config.CLASS_NAMES
-    
+        raise ValueError("class_names is required")
     # Convert to class indices if probabilities
     if len(lite_preds.shape) > 1:
         lite_preds_class = np.argmax(lite_preds, axis=1)
@@ -241,7 +236,7 @@ def plot_confusion_matrix_comparison(y_true, lite_preds, heavy_preds, dynamic_pr
     return fig
 
 
-def plot_value_added_bars(y_true, lite_preds, heavy_preds, dynamic_preds, class_names=None, route_mask=None, ax=None):
+def plot_value_added_bars(y_true, lite_preds, heavy_preds, dynamic_preds, class_names, route_mask=None, ax=None):
     """
     Plot stacked bar chart showing value-added distribution per class.
     
@@ -254,7 +249,7 @@ def plot_value_added_bars(y_true, lite_preds, heavy_preds, dynamic_preds, class_
         lite_preds: Lite predictions (class indices or probabilities)
         heavy_preds: Heavy predictions (class indices or probabilities)
         dynamic_preds: Dynamic predictions (class indices or probabilities)
-        class_names: List of class names. If None, uses config.CLASS_NAMES
+        class_names: List of class names (required).
         route_mask: Boolean array indicating which samples were routed to heavy model.
                    If None, will be calculated from predictions.
         ax: Optional matplotlib axes. If None, a new figure is created.
@@ -263,8 +258,7 @@ def plot_value_added_bars(y_true, lite_preds, heavy_preds, dynamic_preds, class_
         matplotlib.figure.Figure: Figure object with stacked bar chart
     """
     if class_names is None:
-        class_names = config.CLASS_NAMES
-    
+        raise ValueError("class_names is required")
     # Convert to class indices if probabilities
     if len(lite_preds.shape) > 1:
         lite_preds_class = np.argmax(lite_preds, axis=1)
@@ -680,7 +674,7 @@ def plot_routing_breakdown_doughnut(entropy, safe_danger_gap, route_mask, total_
     return fig
 
 
-def plot_classwise_accuracy_bars(y_true, lite_preds, heavy_preds, dynamic_preds, class_names=None):
+def plot_classwise_accuracy_bars(y_true, lite_preds, heavy_preds, dynamic_preds, class_names):
     """
     Plot per-class accuracy bar charts for Lite, Heavy, and Dynamic systems.
     
@@ -691,14 +685,13 @@ def plot_classwise_accuracy_bars(y_true, lite_preds, heavy_preds, dynamic_preds,
         lite_preds: Lite predictions (class indices or probabilities)
         heavy_preds: Heavy predictions (class indices or probabilities)
         dynamic_preds: Dynamic predictions (class indices or probabilities)
-        class_names: List of class names. If None, uses config.CLASS_NAMES
+        class_names: List of class names (required).
     
     Returns:
         matplotlib.figure.Figure: Figure object with three subplots
     """
     if class_names is None:
-        class_names = config.CLASS_NAMES
-    
+        raise ValueError("class_names is required")
     # Convert to class indices if probabilities
     if len(lite_preds.shape) > 1:
         lite_preds_class = np.argmax(lite_preds, axis=1)
@@ -775,7 +768,7 @@ def plot_classwise_accuracy_bars(y_true, lite_preds, heavy_preds, dynamic_preds,
     return fig
 
 
-def plot_gender_age_accuracy(y_true, lite_preds, heavy_preds, dynamic_preds, meta_df, class_names=None, axes=None):
+def plot_gender_age_accuracy(y_true, lite_preds, heavy_preds, dynamic_preds, meta_df, class_names, axes=None):
     """
     Plot model accuracy by Gender and Age categories.
     
@@ -787,15 +780,14 @@ def plot_gender_age_accuracy(y_true, lite_preds, heavy_preds, dynamic_preds, met
         heavy_preds: Heavy predictions (class indices or probabilities)
         dynamic_preds: Dynamic predictions (class indices or probabilities)
         meta_df: DataFrame with metadata columns ('age', 'sex' or 'gender')
-        class_names: List of class names. If None, uses config.CLASS_NAMES
+        class_names: List of class names (required).
         axes: Optional tuple (ax1, ax2) to draw on. If None, a new figure is created.
     
     Returns:
         matplotlib.figure.Figure: Figure object with two subplots (Gender and Age)
     """
     if class_names is None:
-        class_names = config.CLASS_NAMES
-    
+        raise ValueError("class_names is required")
     # Convert to class indices if probabilities
     if len(lite_preds.shape) > 1:
         lite_preds_class = np.argmax(lite_preds, axis=1)
@@ -950,7 +942,7 @@ def plot_gender_age_accuracy(y_true, lite_preds, heavy_preds, dynamic_preds, met
     return fig
 
 
-def plot_fairness_disparity(fairness_lite, fairness_heavy, fairness_ecofair, dangerous_classes=None):
+def plot_fairness_disparity(fairness_lite, fairness_heavy, fairness_ecofair, dangerous_classes):
     """
     Plot side-by-side Gender and Age disparity gaps for dangerous classes.
     
@@ -961,15 +953,14 @@ def plot_fairness_disparity(fairness_lite, fairness_heavy, fairness_ecofair, dan
         fairness_lite: DataFrame from generate_fairness_report for lite model
         fairness_heavy: DataFrame from generate_fairness_report for heavy model
         fairness_ecofair: DataFrame from generate_fairness_report for EcoFair (dynamic) model
-        dangerous_classes: List of dangerous class names. Defaults to config.DANGEROUS_CLASSES.
+        dangerous_classes: List of dangerous class names (required).
     
     Returns:
         matplotlib.figure.Figure: Figure with two subplots
     """
     if dangerous_classes is None:
-        dangerous_classes = list(config.DANGEROUS_CLASSES)
-    else:
-        dangerous_classes = list(dangerous_classes)
+        raise ValueError("dangerous_classes is required")
+    dangerous_classes = list(dangerous_classes)
     
     def _filter_unknown(df):
         """Remove rows where Subgroup contains 'Unknown'."""

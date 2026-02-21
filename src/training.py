@@ -47,7 +47,7 @@ def compile_and_train(model, X_img, X_tab, y, X_val_img, X_val_tab, y_val, class
     return hist
 
 
-def get_class_weights(y_train, class_names=None):
+def get_class_weights(y_train, class_names):
     """
     Calculate balanced class weights for training.
     
@@ -55,14 +55,13 @@ def get_class_weights(y_train, class_names=None):
     
     Args:
         y_train: Training labels, either one-hot encoded (2D array) or integer labels (1D array)
-        class_names: List of class names. If None, uses config.CLASS_NAMES
+        class_names: List of class names (required).
     
     Returns:
         dict: Dictionary mapping class indices to weights
     """
     if class_names is None:
-        class_names = config.CLASS_NAMES
-    
+        raise ValueError("class_names is required")
     # Convert one-hot to labels if necessary
     if len(y_train.shape) > 1 and y_train.shape[1] > 1:
         y_train_labels = np.argmax(y_train, axis=1)
@@ -83,10 +82,9 @@ def get_class_weights(y_train, class_names=None):
     return class_weight_dict
 
 
-def run_cv_pipeline(X_heavy, X_lite, X_tab, y, meta_df, n_splits=5, risk_scaler=None,
-                    routing_strategy='threshold', budget=0.35,
-                    class_names=None, safe_classes=None, dangerous_classes=None,
-                    dataset_name='HAM10000'):
+def run_cv_pipeline(X_heavy, X_lite, X_tab, y, meta_df, class_names, safe_classes, dangerous_classes,
+                    n_splits=5, risk_scaler=None, routing_strategy='threshold', budget=0.35,
+                    energy_path_lite=None, energy_path_heavy=None):
     """
     Run 5-Fold Stratified Group Cross-Validation with Out-of-Fold (OOF) tracking.
     
@@ -103,10 +101,11 @@ def run_cv_pipeline(X_heavy, X_lite, X_tab, y, meta_df, n_splits=5, risk_scaler=
         routing_strategy: 'threshold' (SafetyFirstOptimizer, for HAM) or
                           'budget' (fixed 35% budget routing, for domain-shifted datasets)
         budget: Fraction of samples routed to heavy under budget routing (default: 0.35)
-        class_names: Class names for routing gap calculation. Defaults to config.CLASS_NAMES.
-        safe_classes: Safe class names. Defaults to config.SAFE_CLASSES.
-        dangerous_classes: Dangerous class names. Defaults to config.DANGEROUS_CLASSES.
-        dataset_name: Dataset name for loading correct energy stats (default: 'HAM10000').
+        class_names: Class names for routing (required).
+        safe_classes: Safe class names (required).
+        dangerous_classes: Dangerous class names (required).
+        energy_path_lite: Path to directory containing energy_stats.json for lite model.
+        energy_path_heavy: Path to directory containing energy_stats.json for heavy model.
     
     Returns:
         tuple: (fold_metrics, oof_lite, oof_heavy, oof_dynamic, route_mask_oof, route_components_oof)
@@ -117,13 +116,8 @@ def run_cv_pipeline(X_heavy, X_lite, X_tab, y, meta_df, n_splits=5, risk_scaler=
     """
     from . import data_loader, models, routing, features, utils
     
-    if class_names is None:
-        class_names = config.CLASS_NAMES
-    if safe_classes is None:
-        safe_classes = config.SAFE_CLASSES
-    if dangerous_classes is None:
-        dangerous_classes = config.DANGEROUS_CLASSES
-    
+    if class_names is None or safe_classes is None or dangerous_classes is None:
+        raise ValueError("class_names, safe_classes, and dangerous_classes are required")
     n_samples, n_classes = y.shape
     oof_lite = np.zeros_like(y, dtype=np.float32)
     oof_heavy = np.zeros_like(y, dtype=np.float32)
@@ -140,12 +134,10 @@ def run_cv_pipeline(X_heavy, X_lite, X_tab, y, meta_df, n_splits=5, risk_scaler=
         'routing_rate': [], 'energy_cost': []
     }
     
-    joules_lite  = utils.load_energy_stats(config.SELECTED_LITE_MODEL,  is_heavy=False, dataset_name=dataset_name)
-    joules_heavy = utils.load_energy_stats(config.SELECTED_HEAVY_MODEL, is_heavy=True,  dataset_name=dataset_name)
-    if joules_lite is None:
-        joules_lite = 1.0
-    if joules_heavy is None:
-        joules_heavy = 2.5
+    joules_lite = utils.load_energy_stats(energy_path_lite) if energy_path_lite else None
+    joules_heavy = utils.load_energy_stats(energy_path_heavy) if energy_path_heavy else None
+    joules_lite = joules_lite if joules_lite is not None else 1.0
+    joules_heavy = joules_heavy if joules_heavy is not None else 2.5
     
     y_labels = np.argmax(y, axis=1)
     splits = data_loader.get_stratified_split(meta_df, y_labels, n_splits=n_splits)
@@ -173,7 +165,7 @@ def run_cv_pipeline(X_heavy, X_lite, X_tab, y, meta_df, n_splits=5, risk_scaler=
         y_val = y[val_idx_abs]
         meta_test = meta_df.iloc[test_idx].reset_index(drop=True)
         
-        class_weight_dict = get_class_weights(y_train)
+        class_weight_dict = get_class_weights(y_train, class_names=class_names)
         
         lite_adapter = models.build_image_adapter(feature_dim=X_lite.shape[1], embedding_dim=128)
         heavy_adapter = models.build_image_adapter(feature_dim=X_heavy.shape[1], embedding_dim=128)
@@ -200,10 +192,8 @@ def run_cv_pipeline(X_heavy, X_lite, X_tab, y, meta_df, n_splits=5, risk_scaler=
             # Used for domain-shifted datasets where threshold optimisation is unreliable.
             final_preds, route_mask, _ = routing.apply_budget_routing(
                 lite_preds_test, heavy_preds_test,
+                class_names, safe_classes, dangerous_classes,
                 budget=budget,
-                class_names=class_names,
-                safe_classes=safe_classes,
-                danger_classes=dangerous_classes,
             )
             # Budget routing has no per-reason decomposition; mark all routed as uncertainty
             route_components = {
@@ -240,14 +230,12 @@ def run_cv_pipeline(X_heavy, X_lite, X_tab, y, meta_df, n_splits=5, risk_scaler=
             
             final_preds, route_mask, route_components = routing.apply_threshold_routing(
                 lite_preds_test, heavy_preds_test,
+                class_names, safe_classes, dangerous_classes,
                 entropy_threshold=optimal_config['entropy_t'],
                 gap_threshold=optimal_config['gap_t'],
                 heavy_weight=optimal_config['heavy_weight'],
                 patient_risk=patient_risk,
                 safety_threshold=0.75,
-                class_names=class_names,
-                safe_classes=safe_classes,
-                danger_classes=dangerous_classes,
             )
         
         acc_lite = accuracy_score(y_true_test, np.argmax(lite_preds_test, axis=1))

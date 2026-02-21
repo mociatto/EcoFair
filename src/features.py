@@ -10,10 +10,7 @@ import pandas as pd
 from sklearn.preprocessing import StandardScaler, OneHotEncoder, MinMaxScaler
 from tensorflow import keras
 
-from . import config
-
-
-def compute_localization_risk_scores(meta_df: pd.DataFrame, dangerous_classes=None) -> dict:
+def compute_localization_risk_scores(meta_df: pd.DataFrame, dangerous_classes) -> dict:
     """
     Empirically derive localization risk scores from a dataset's malignancy rates.
     
@@ -24,16 +21,14 @@ def compute_localization_risk_scores(meta_df: pd.DataFrame, dangerous_classes=No
     
     Args:
         meta_df: DataFrame with diagnosis and localization columns
-        dangerous_classes: List of class names considered malignant.
-                           Defaults to config.DANGEROUS_CLASSES if None.
+        dangerous_classes: List of class names considered malignant (required).
     
     Returns:
         dict: {localization_site (lowercase): raw_malignancy_rate}
               Returns {} if the required columns cannot be found.
     """
     if dangerous_classes is None:
-        dangerous_classes = config.DANGEROUS_CLASSES
-    
+        raise ValueError("dangerous_classes is required")
     df = meta_df.copy()
     
     # Detect diagnosis column
@@ -169,12 +164,7 @@ def prepare_tabular_features(meta_df: pd.DataFrame, localization_risk_scores: di
     risk_scaler = MinMaxScaler()
     cumulative_risk = risk_scaler.fit_transform(raw_risk.reshape(-1, 1)).flatten()
     meta_df_copy['risk_score'] = cumulative_risk
-    
-    print(f"\nCumulative Exposure Risk Score Calculated:")
-    print(f"- Raw risk range: [{raw_risk.min():.2f}, {raw_risk.max():.2f}]")
-    print(f"- Normalized risk range: [{cumulative_risk.min():.4f}, {cumulative_risk.max():.4f}]")
-    print(f"- Formula: risk_score = MinMax(sun_exposure_rate × age)")
-    
+
     # Step C: Encoding
     # StandardScaler for age
     scaler = StandardScaler()
@@ -200,7 +190,7 @@ def prepare_tabular_features(meta_df: pd.DataFrame, localization_risk_scores: di
     return tabular_features, scaler, sex_encoder, loc_encoder, risk_scaler
 
 
-def prepare_labels(meta_df: pd.DataFrame, class_names=None):
+def prepare_labels(meta_df: pd.DataFrame, class_names):
     """
     Convert diagnostic strings to one-hot encoded vectors.
     
@@ -209,7 +199,7 @@ def prepare_labels(meta_df: pd.DataFrame, class_names=None):
     
     Args:
         meta_df: DataFrame with diagnosis column
-        class_names: List of class names. If None, uses config.CLASS_NAMES (HAM10000)
+        class_names: List of class names (required).
     
     Returns:
         tuple: (y, dx_to_idx)
@@ -217,8 +207,7 @@ def prepare_labels(meta_df: pd.DataFrame, class_names=None):
             - dx_to_idx: Dictionary mapping diagnosis strings to class indices
     """
     if class_names is None:
-        class_names = config.CLASS_NAMES
-    
+        raise ValueError("class_names is required")
     # Find diagnosis column
     diagnosis_col = None
     for col in ['dx', 'diagnosis', 'diagnostic', 'label']:
