@@ -40,13 +40,13 @@ def compute_localization_risk_scores(meta_df: pd.DataFrame, dangerous_classes) -
     
     # Detect localization column
     loc_col = None
-    for col in ['localization', 'region', 'lesion_location', 'anatom_site']:
+    for col in ['localization', 'region', 'lesion_location', 'anatom_site', 'anatom_site_general']:
         if col in df.columns:
             loc_col = col
             break
     if loc_col is None:
         for col in df.columns:
-            if col.lower() in ['localization', 'region', 'lesion_location', 'anatom_site']:
+            if col.lower() in ['localization', 'region', 'lesion_location', 'anatom_site', 'anatom_site_general']:
                 loc_col = col
                 break
     
@@ -118,11 +118,17 @@ def prepare_tabular_features(meta_df: pd.DataFrame, localization_risk_scores: di
     meta_df_copy = meta_df.copy()
     
     # Step A: Column Standardization
-    # Handle age column
-    if 'age' not in meta_df_copy.columns:
+    # Handle age column (support 'age' and 'age_approx' variants)
+    age_col = None
+    for col in ['age', 'age_approx']:
+        if col in meta_df_copy.columns:
+            age_col = col
+            break
+    if age_col is None:
         meta_df_copy['age'] = 0
-        print("Warning: 'age' column not found. Filling with 0.")
-    age_values = meta_df_copy['age'].fillna(0).values
+        age_col = 'age'
+        print("Warning: No age column found. Filling with 0.")
+    age_values = meta_df_copy[age_col].fillna(0).values
     
     # Handle sex/gender column
     gender_col = None
@@ -137,7 +143,7 @@ def prepare_tabular_features(meta_df: pd.DataFrame, localization_risk_scores: di
     
     # Handle localization column (check multiple possible names)
     loc_col_for_risk = None
-    for col_name in ['localization', 'region', 'lesion_location', 'anatom_site']:
+    for col_name in ['localization', 'region', 'lesion_location', 'anatom_site', 'anatom_site_general']:
         if col_name in meta_df_copy.columns:
             loc_col_for_risk = col_name
             break
@@ -146,7 +152,7 @@ def prepare_tabular_features(meta_df: pd.DataFrame, localization_risk_scores: di
     if loc_col_for_risk is None:
         for col in meta_df_copy.columns:
             col_lower = col.lower()
-            if col_lower in ['region', 'lesion_location', 'localization', 'anatom_site']:
+            if col_lower in ['region', 'lesion_location', 'localization', 'anatom_site', 'anatom_site_general']:
                 loc_col_for_risk = col
                 break
     
@@ -168,7 +174,7 @@ def prepare_tabular_features(meta_df: pd.DataFrame, localization_risk_scores: di
     # Step C: Encoding
     # StandardScaler for age
     scaler = StandardScaler()
-    age_scaled = scaler.fit_transform(meta_df_copy[['age']])
+    age_scaled = scaler.fit_transform(meta_df_copy[[age_col]])
     
     # OneHotEncoder for sex/gender
     sex_encoder = OneHotEncoder(sparse_output=False, drop='first')
@@ -257,7 +263,7 @@ def calculate_cumulative_risk(meta_df: pd.DataFrame, risk_scaler: MinMaxScaler,
     """
     # Find localization column (same logic as prepare_tabular_features)
     loc_col_for_risk = None
-    for col_name in ['localization', 'region', 'lesion_location', 'anatom_site']:
+    for col_name in ['localization', 'region', 'lesion_location', 'anatom_site', 'anatom_site_general']:
         if col_name in meta_df.columns:
             loc_col_for_risk = col_name
             break
@@ -266,7 +272,7 @@ def calculate_cumulative_risk(meta_df: pd.DataFrame, risk_scaler: MinMaxScaler,
         # Try case-insensitive search
         for col in meta_df.columns:
             col_lower = col.lower()
-            if col_lower in ['region', 'lesion_location', 'localization', 'anatom_site']:
+            if col_lower in ['region', 'lesion_location', 'localization', 'anatom_site', 'anatom_site_general']:
                 loc_col_for_risk = col
                 break
     
@@ -278,8 +284,13 @@ def calculate_cumulative_risk(meta_df: pd.DataFrame, risk_scaler: MinMaxScaler,
             lambda loc: get_sun_exposure_score(loc, localization_risk_scores)
         ).values
     
-    # Get age values (fill with 0 if missing)
-    age_values = meta_df['age'].values if 'age' in meta_df.columns else np.zeros(len(meta_df))
+    # Get age values — support both 'age' and 'age_approx' column names
+    age_col = None
+    for col in ['age', 'age_approx']:
+        if col in meta_df.columns:
+            age_col = col
+            break
+    age_values = meta_df[age_col].fillna(0).values if age_col is not None else np.zeros(len(meta_df))
     
     # Calculate raw risk and transform
     raw_risk = sun_exposure_rate * age_values

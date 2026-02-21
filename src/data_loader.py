@@ -14,8 +14,10 @@ from sklearn.model_selection import StratifiedGroupKFold
 from . import config
 
 
-def load_dataset_features(heavy_dir: str, lite_dir: str, meta_path: str,
-                          required_columns: list = None):
+def load_dataset_features(heavy_dir: str, lite_dir: str,
+                          meta_path,
+                          required_columns: list = None,
+                          id_col: str = None):
     """
     Load and align features with metadata using flexible zipper logic.
 
@@ -27,11 +29,17 @@ def load_dataset_features(heavy_dir: str, lite_dir: str, meta_path: str,
     Args:
         heavy_dir: Path to directory containing features.npy and ids.npy
         lite_dir: Path to directory containing features.npy and ids.npy
-        meta_path: Path to metadata CSV
+        meta_path: Path to metadata CSV, or a pre-loaded pandas DataFrame.
+                   Passing a DataFrame allows the front-end to merge multiple
+                   CSV files before loading without touching backend logic.
         required_columns: Column names that must be non-null for a row to be
                           kept. The front-end injects this so the loader stays
                           dataset-agnostic. Defaults to the diagnosis column
                           only (auto-detected).
+        id_col: Name of the image-ID column in the metadata when it is
+                something other than 'image_id' or 'img_id' (e.g.
+                'bcn_filename'). The column is renamed to 'image_id'
+                internally. The front-end injects this to stay agnostic.
 
     Returns:
         tuple: (X_heavy, X_lite, aligned_meta)
@@ -39,13 +47,21 @@ def load_dataset_features(heavy_dir: str, lite_dir: str, meta_path: str,
             - X_lite: Lite model features, shape (n_samples, feature_dim)
             - aligned_meta: DataFrame with aligned metadata
     """
-    metadata = pd.read_csv(meta_path)
+    if isinstance(meta_path, pd.DataFrame):
+        metadata = meta_path.copy()
+    else:
+        metadata = pd.read_csv(meta_path)
 
-    # Normalize ID column
+    # Normalize ID column — front-end can override via id_col
+    if id_col is not None and id_col in metadata.columns and 'image_id' not in metadata.columns:
+        metadata = metadata.rename(columns={id_col: 'image_id'})
     if 'img_id' in metadata.columns and 'image_id' not in metadata.columns:
         metadata = metadata.rename(columns={'img_id': 'image_id'})
     if 'image_id' not in metadata.columns:
-        raise ValueError("Metadata must contain 'image_id' or 'img_id' column")
+        raise ValueError(
+            "Metadata must contain 'image_id' or 'img_id' column, "
+            "or specify the correct column via id_col="
+        )
 
     if 'sex' not in metadata.columns and 'gender' not in metadata.columns:
         metadata['sex'] = 'unknown'
