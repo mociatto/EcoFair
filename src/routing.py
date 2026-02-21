@@ -99,7 +99,10 @@ class SafetyFirstOptimizer:
                 - optimal_config: Best configuration dict
                 - all_results: List of all evaluated configurations
         """
-        entropy_thresholds = [0.6, 0.7, 0.8, 0.9]
+        # Proportional entropy thresholds (fraction of max entropy = log(n_classes)).
+        # Training passes pre-normalised entropy to this optimizer, so these values
+        # are directly comparable across datasets with different class counts.
+        entropy_thresholds = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
         gap_thresholds = [0.05, 0.10, 0.15]
         heavy_weights = [0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
         
@@ -153,8 +156,12 @@ def apply_threshold_routing(lite_preds, heavy_preds, class_names, safe_classes, 
         entropy_threshold = config.ENTROPY_THRESHOLD
     if gap_threshold is None:
         gap_threshold = config.SAFE_DANGER_GAP_THRESHOLD
-    # Calculate entropy
-    entropy = calculate_entropy(lite_preds)
+    # Normalise entropy to [0, 1] by dividing by the theoretical maximum log(n_classes).
+    # This makes entropy_threshold a proportion of maximum possible uncertainty,
+    # so the same threshold value means the same relative confidence level regardless
+    # of how many classes the dataset has.
+    n_classes = len(class_names)
+    entropy = calculate_entropy(lite_preds) / np.log(n_classes)
     
     # Calculate safe-danger gap
     safe_indices = [class_names.index(c) for c in safe_classes]

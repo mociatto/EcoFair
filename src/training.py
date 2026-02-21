@@ -205,7 +205,9 @@ def run_cv_pipeline(X_heavy, X_lite, X_tab, y, meta_df, class_names, safe_classe
             }
         else:
             # Threshold routing with SafetyFirstOptimizer (HAM / source domain)
-            entropy_test = routing.calculate_entropy(lite_preds_test)
+            # Normalise entropy to [0, 1] so the optimizer's grid values are proportions
+            # of maximum possible uncertainty — consistent with apply_threshold_routing.
+            entropy_test = routing.calculate_entropy(lite_preds_test) / np.log(n_classes)
             safe_indices   = [class_names.index(c) for c in safe_classes]
             danger_indices = [class_names.index(c) for c in dangerous_classes]
             prob_safe   = lite_preds_test[:, safe_indices].sum(axis=1)

@@ -104,7 +104,7 @@ def generate_fairness_report(y_true, y_pred, meta_df, class_names):
     col_map = {c.lower(): c for c in meta_df_copy.columns}
     
     # Age subgroups: <30, 30-60, 60+
-    age_col = col_map.get('age')
+    age_col = col_map.get('age') or col_map.get('age_approx')
     if age_col is not None:
         age_vals = pd.to_numeric(meta_df_copy[age_col], errors='coerce').fillna(0).clip(lower=0)
         meta_df_copy['_age_bin'] = pd.cut(

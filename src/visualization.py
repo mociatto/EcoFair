@@ -61,7 +61,7 @@ def plot_metadata_distributions(meta_df, dangerous_classes, title_suffix=''):
     
     # Detect localization column dynamically
     loc_col = None
-    for col in ['localization', 'region', 'lesion_location', 'anatom_site']:
+    for col in ['localization', 'region', 'lesion_location', 'anatom_site', 'anatom_site_general']:
         if col in meta_df_copy.columns:
             loc_col = col
             break
@@ -70,7 +70,11 @@ def plot_metadata_distributions(meta_df, dangerous_classes, title_suffix=''):
         loc_col = '_loc'
     
     # Age bins — handle missing or non-numeric age gracefully
-    age_col = 'age' if 'age' in meta_df_copy.columns else None
+    age_col = None
+    for col in ['age', 'age_approx']:
+        if col in meta_df_copy.columns:
+            age_col = col
+            break
     if age_col is not None:
         meta_df_copy[age_col] = pd.to_numeric(meta_df_copy[age_col], errors='coerce')
         age_bins = np.arange(0, 101, 10)
@@ -887,8 +891,13 @@ def plot_gender_age_accuracy(y_true, lite_preds, heavy_preds, dynamic_preds, met
     age_acc_heavy = []
     age_acc_ecofair = []
     
-    if 'age' in meta_df_copy.columns:
-        age_values = meta_df_copy['age'].values
+    age_col_ga = None
+    for col in ['age', 'age_approx']:
+        if col in meta_df_copy.columns:
+            age_col_ga = col
+            break
+    if age_col_ga is not None:
+        age_values = pd.to_numeric(meta_df_copy[age_col_ga], errors='coerce').fillna(0).values
         age_mask_young = age_values < 30
         age_mask_middle = (age_values >= 30) & (age_values < 60)
         age_mask_old = age_values >= 60
