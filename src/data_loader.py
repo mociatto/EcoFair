@@ -112,7 +112,16 @@ def load_dataset_features(heavy_dir: str, lite_dir: str,
     # Intersection
     intersection = heavy_ids_set & lite_ids_set & metadata_ids_set
     if len(intersection) == 0:
-        raise ValueError("No common IDs between metadata, heavy features, and lite features")
+        meta_sample  = sorted(metadata_ids_set)[:5]
+        heavy_sample = sorted(heavy_ids_set)[:5]
+        lite_sample  = sorted(lite_ids_set)[:5]
+        raise ValueError(
+            "No common IDs between metadata, heavy features, and lite features.\n"
+            f"  Metadata sample IDs : {meta_sample}\n"
+            f"  Heavy   sample IDs  : {heavy_sample}\n"
+            f"  Lite    sample IDs  : {lite_sample}\n"
+            "Check that all three sources refer to the same dataset."
+        )
 
     # Align
     heavy_id_to_idx = {img_id: idx for idx, img_id in enumerate(heavy_ids_clean)}
