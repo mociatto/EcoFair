@@ -9,9 +9,14 @@
 !fig/
 !fig/**
 
-# Don't ignore main notebook and main.py
-!main.ipynb
-!main.py
+# Don't ignore feature_extraction (extractor notebooks)
+!feature_extraction/
+!feature_extraction/**
+
+# Don't ignore main pipeline notebooks (at repo root)
+!ecofair-ham10k.ipynb
+!ecofair-pad-ufes-20.ipynb
+!ecofair-bcn20k.ipynb
 
 # Don't ignore readme files
 !README.md
@@ -22,10 +27,15 @@
 *.pyo
 *.pyd
 
+# macOS
+.DS_Store
+
 # Don't ignore .gitignore itself
 !.gitignore
 
-# development files
+# development / not tracked
+main/
 main.ipynb
-main_pad.py
 main_ham.py
+main_pad.py
+main_bcn.py
