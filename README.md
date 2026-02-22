@@ -70,9 +70,9 @@ All results are from 5-fold stratified group cross-validation. Full per-fold log
 
 | Dataset | Lite | Heavy | EcoFair | Routing Rate |
 |---------|------|-------|---------|--------------|
-| HAM10000 | 0.7406 ± 0.0126 | 0.7513 ± 0.0065 | **0.7617 ± 0.0111** | 29.9% ± 1.8% |
-| PAD-UFES-20 | 0.6532 ± 0.0218 | 0.6783 ± 0.0245 | **0.6693 ± 0.0240** | 55.3% ± 2.8% |
-| BCN20000 | **0.5572 ± 0.0182** | 0.5448 ± 0.0121 | 0.5562 ± 0.0182 | 51.7% ± 2.6% |
+| HAM10000 | 0.7406 ± 0.0126 | 0.7513 ± 0.0065 | 0.7617 ± 0.0111 | 29.9% ± 1.8% |
+| PAD-UFES-20 | 0.6532 ± 0.0218 | 0.6783 ± 0.0245 | 0.6693 ± 0.0240 | 55.3% ± 2.8% |
+| BCN20000 | 0.5572 ± 0.0182 | 0.5448 ± 0.0121 | 0.5562 ± 0.0182 | 51.7% ± 2.6% |
 
 On HAM10000, EcoFair achieves the highest accuracy (+2.1 pp over Lite, +1.4 pp over Heavy) by routing only 30% of samples to the heavy model. On PAD and BCN, EcoFair sits between Lite and Heavy accuracy while substantially reducing inference cost relative to always using the heavy model.
 
