@@ -37,12 +37,12 @@ Part of the [ISIC 2019 Challenge](https://challenge.isic-archive.com/data/#2019)
 > Tschandl P. et al. *The HAM10000 dataset.* Sci. Data 5, 180161 (2018).
 
 ### BCN20000
-Also from the [ISIC 2019 Challenge](https://challenge.isic-archive.com/data/#2019). Dermoscopic images from Hospital Clínic de Barcelona. Eight classes; train/test split. Heterogeneous lighting and acquisition make it a good domain-shift benchmark.
+Also from the [ISIC 2019 Challenge](https://challenge.isic-archive.com/data/#2019). Dermoscopic images from Hospital Clínic de Barcelona. Eight classes; train/test split. Heterogeneous lighting and acquisition make it a good domain-shift benchmark. Actinic Keratosis (`ak`) is treated as safe/pre-malignant (consistent with PAD-UFES-20's `ack`), since both datasets separate it from the malignant SCC class.
 
 > Hernández-Pérez C. et al. *BCN20000: Dermoscopic lesions in the wild.* Sci. Data 11, 641 (2024).
 
 ### PAD-UFES-20
-[Mendeley Data](https://data.mendeley.com/datasets/zr7vgbcyr2/1). Clinical images from smartphones at a public dermatology clinic in Brazil. Six classes, ~58% biopsy-proven. Variable resolution and illumination; rich metadata (Fitzpatrick type, lesion diameter, age, sex, localization).
+[Mendeley Data](https://data.mendeley.com/datasets/zr7vgbcyr2/1). Clinical images from smartphones at a public dermatology clinic in Brazil. Six classes, ~58% biopsy-proven. Variable resolution and illumination; rich metadata (Fitzpatrick type, lesion diameter, age, sex, localization). Actinic Keratosis (`ack`) is treated as safe/pre-malignant since it is explicitly separated from the malignant SCC class in this dataset.
 
 > Pacheco A. G. C. et al. *PAD-UFES-20.* Mendeley Data (2020).
 
