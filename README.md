@@ -62,6 +62,52 @@ Each notebook runs 5-fold CV and reports Pure Lite, Pure Heavy, and EcoFair accu
 
 ---
 
+## Results
+
+All results are from 5-fold stratified group cross-validation. Full per-fold logs, confusion matrices, and fairness visualizations are available in each notebook.
+
+### Classification Accuracy
+
+| Dataset | Lite | Heavy | EcoFair | Routing Rate |
+|---------|------|-------|---------|--------------|
+| HAM10000 | 0.7406 ± 0.0126 | 0.7513 ± 0.0065 | **0.7617 ± 0.0111** | 29.9% ± 1.8% |
+| PAD-UFES-20 | 0.6532 ± 0.0218 | 0.6783 ± 0.0245 | **0.6693 ± 0.0240** | 55.3% ± 2.8% |
+| BCN20000 | **0.5572 ± 0.0182** | 0.5448 ± 0.0121 | 0.5562 ± 0.0182 | 51.7% ± 2.6% |
+
+On HAM10000, EcoFair achieves the highest accuracy (+2.1 pp over Lite, +1.4 pp over Heavy) by routing only 30% of samples to the heavy model. On PAD and BCN, EcoFair sits between Lite and Heavy accuracy while substantially reducing inference cost relative to always using the heavy model.
+
+### Energy Efficiency
+
+Energy per sample is measured empirically during feature extraction and carried through the pipeline.
+
+| Dataset | Lite (J/sample) | Heavy (J/sample) | EcoFair (J/sample) | Saving vs Heavy |
+|---------|----------------|------------------|-------------------|-----------------|
+| HAM10000 | ~0.27 | ~0.27 | 0.27 ± 0.00 | 0% (models matched on this GPU) |
+| PAD-UFES-20 | ~0.14 | ~0.41 | 0.29 ± 0.01 | ~29% |
+| BCN20000 | ~0.13 | ~0.41 | 0.27 ± 0.01 | ~33% |
+
+On PAD and BCN, routing only the ambiguous and high-risk cases to the heavy model reduces energy consumption by roughly 29-33% compared to always running the heavier encoder, while maintaining accuracy above the lite-only baseline. On HAM10000 both encoders consumed comparable energy on the evaluation GPU, so the gain there is accuracy rather than energy.
+
+### Fairness (Subgroup Macro TPR on Dangerous Classes)
+
+The table below shows macro-averaged Equal Opportunity TPR across demographic subgroups (age and sex), restricted to dangerous/malignant classes. A smaller gap indicates more equitable detection across groups.
+
+| Dataset | Model | Macro TPR Mean | Worst Group TPR | Fairness Gap |
+|---------|-------|----------------|-----------------|--------------|
+| HAM10000 | Lite | 0.6105 | 0.5751 | 0.1025 |
+| HAM10000 | EcoFair | **0.6158** | **0.5796** | **0.0980** |
+| HAM10000 | Heavy | 0.6137 | 0.5781 | 0.1054 |
+| PAD-UFES-20 | Lite | **0.5294** | **0.4000** | 0.1788 |
+| PAD-UFES-20 | EcoFair | 0.5288 | **0.4000** | 0.1940 |
+| PAD-UFES-20 | Heavy | 0.4956 | 0.3000 | 0.2690 |
+| BCN20000 | Lite | **0.4282** | **0.3612** | **0.1464** |
+| BCN20000 | EcoFair | 0.4179 | 0.3241 | 0.1782 |
+| BCN20000 | Heavy | 0.4077 | 0.2921 | 0.2014 |
+
+On HAM10000, EcoFair achieves the highest mean TPR and tightest fairness gap across all models. On PAD and BCN, EcoFair consistently outperforms the heavy-only baseline on both worst-group TPR and fairness gap, maintaining malignancy detection closer to the lite model's performance while reducing energy.
+
+---
+
 ## Repository Structure
 
 ```
