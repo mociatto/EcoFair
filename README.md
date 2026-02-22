@@ -84,15 +84,15 @@ Energy per sample comes from the feature extractors: each run writes an `energy_
 
 So savings are **fully determined** by the JSON values and the observed routing rate: no extra instrumentation is needed. You can be confident about energy saving as long as `LITE_DIR` and `HEAVY_DIR` point to directories that contain `energy_stats.json` (i.e. the feature-extractor outputs). If the file is missing, the code falls back to default values and the reported energy will not match the real hardware.
 
-Example (HAM10000, from the extractor JSON you shared):
+Values below are from the measured `energy_stats.json` for each dataset (ResNet50 heavy; lite is MobileNetV3Small for HAM/BCN and MobileNetV3Large for PAD). EcoFair uses the observed CV routing rate.
 
 | Dataset | Lite (J/sample) | Heavy (J/sample) | EcoFair (J/sample) | Saving vs Heavy |
 |---------|-----------------|------------------|--------------------|-----------------|
-| HAM10000 | 0.174 | 0.386 | ≈ 0.24 (at 30% routing) | **≈ 38%** |
-| PAD-UFES-20 | from `energy_stats.json` in lite/heavy dirs | | (1−r)×lite + r×heavy | (heavy − ecofair) / heavy |
-| BCN20000 | from `energy_stats.json` in lite/heavy dirs | | (1−r)×lite + r×heavy | (heavy − ecofair) / heavy |
+| HAM10000 | 0.174 | 0.386 | ≈ 0.24 (30% routing) | **≈ 38%** |
+| PAD-UFES-20 | 0.211 | 0.397 | ≈ 0.31 (55% routing) | **≈ 21%** |
+| BCN20000 | 0.164 | 0.375 | ≈ 0.27 (52% routing) | **≈ 27%** |
 
-With ResNet50 at 0.386 J/sample and MobileNetV3Small at 0.174 J/sample, a 30% routing rate gives 0.70×0.174 + 0.30×0.386 ≈ 0.24 J/sample, i.e. about **38% less energy** than always using the heavy model (0.386 J/sample). The same formula applies to PAD and BCN using each dataset’s own `energy_stats.json` in the corresponding lite and heavy output folders.
+Savings are fully determined by these JSON values and the observed routing rate. Ensure `LITE_DIR` and `HEAVY_DIR` point to directories containing `energy_stats.json`; otherwise the code uses fallback values and the reported energy will not match the hardware.
 
 ### Fairness (Subgroup Macro TPR on Dangerous Classes)
 
