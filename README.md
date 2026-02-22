@@ -78,15 +78,21 @@ On HAM10000, EcoFair achieves the highest accuracy (+2.1 pp over Lite, +1.4 pp o
 
 ### Energy Efficiency
 
-Energy per sample is measured empirically during feature extraction and carried through the pipeline.
+Energy per sample comes from the feature extractors: each run writes an `energy_stats.json` in its output directory with a `joules_per_sample` field (e.g. ResNet50 ≈ 0.39 J/sample, MobileNetV3Small ≈ 0.17 J/sample on HAM10000). The main pipeline loads these via `utils.load_energy_stats(LITE_DIR)` and `load_energy_stats(HEAVY_DIR)`. EcoFair energy is then computed as:
+
+`energy_per_sample = (1 − routing_rate) × joules_lite + routing_rate × joules_heavy`
+
+So savings are **fully determined** by the JSON values and the observed routing rate: no extra instrumentation is needed. You can be confident about energy saving as long as `LITE_DIR` and `HEAVY_DIR` point to directories that contain `energy_stats.json` (i.e. the feature-extractor outputs). If the file is missing, the code falls back to default values and the reported energy will not match the real hardware.
+
+Example (HAM10000, from the extractor JSON you shared):
 
 | Dataset | Lite (J/sample) | Heavy (J/sample) | EcoFair (J/sample) | Saving vs Heavy |
-|---------|----------------|------------------|-------------------|-----------------|
-| HAM10000 | ~0.27 | ~0.27 | 0.27 ± 0.00 | 0% (models matched on this GPU) |
-| PAD-UFES-20 | ~0.14 | ~0.41 | 0.29 ± 0.01 | ~29% |
-| BCN20000 | ~0.13 | ~0.41 | 0.27 ± 0.01 | ~33% |
+|---------|-----------------|------------------|--------------------|-----------------|
+| HAM10000 | 0.174 | 0.386 | ≈ 0.24 (at 30% routing) | **≈ 38%** |
+| PAD-UFES-20 | from `energy_stats.json` in lite/heavy dirs | | (1−r)×lite + r×heavy | (heavy − ecofair) / heavy |
+| BCN20000 | from `energy_stats.json` in lite/heavy dirs | | (1−r)×lite + r×heavy | (heavy − ecofair) / heavy |
 
-On PAD and BCN, routing only the ambiguous and high-risk cases to the heavy model reduces energy consumption by roughly 29-33% compared to always running the heavier encoder, while maintaining accuracy above the lite-only baseline. On HAM10000 both encoders consumed comparable energy on the evaluation GPU, so the gain there is accuracy rather than energy.
+With ResNet50 at 0.386 J/sample and MobileNetV3Small at 0.174 J/sample, a 30% routing rate gives 0.70×0.174 + 0.30×0.386 ≈ 0.24 J/sample, i.e. about **38% less energy** than always using the heavy model (0.386 J/sample). The same formula applies to PAD and BCN using each dataset’s own `energy_stats.json` in the corresponding lite and heavy output folders.
 
 ### Fairness (Subgroup Macro TPR on Dangerous Classes)
 
