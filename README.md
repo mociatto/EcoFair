@@ -54,9 +54,9 @@ Each dataset has a self-contained Kaggle notebook at the repo root. All three fo
 
 | Notebook | Dataset | Classes |
 |---|---|---|
-| [`ecofair-ham10k.ipynb`](ecofair-ham10k.ipynb) | HAM10000 | 7 |
-| [`ecofair-pad-ufes-20.ipynb`](ecofair-pad-ufes-20.ipynb) | PAD-UFES-20 | 6 |
-| [`ecofair-bcn20k.ipynb`](ecofair-bcn20k.ipynb) | BCN20000 | 8 |
+| [`ecofair-ham.ipynb`](ecofair-ham.ipynb) | HAM10000 | 7 |
+| [`ecofair-pad.ipynb`](ecofair-pad.ipynb) | PAD-UFES-20 | 6 |
+| [`ecofair-bcn.ipynb`](ecofair-bcn.ipynb) | BCN20000 | 8 |
 
 Each notebook runs 5-fold CV and reports Pure Lite, Pure Heavy, and EcoFair accuracy; routing rate and energy per sample; confusion matrices; class-wise and subgroup (age, gender) accuracy; risk-stratified accuracy; battery projection; and a fairness audit (Equal Opportunity TPR, Demographic Parity).
 
@@ -95,12 +95,12 @@ The table below shows macro-averaged Equal Opportunity TPR across demographic su
 | Dataset | Model | Macro TPR Mean | Worst Group TPR | Fairness Gap |
 |---------|-------|----------------|-----------------|--------------|
 | HAM10000 | Lite | 0.6105 | 0.5751 | 0.1025 |
-| HAM10000 | EcoFair | **0.6158** | **0.5796** | **0.0980** |
+| HAM10000 | EcoFair | 0.6158 | 0.5796 | 0.0980 |
 | HAM10000 | Heavy | 0.6137 | 0.5781 | 0.1054 |
-| PAD-UFES-20 | Lite | **0.5294** | **0.4000** | 0.1788 |
-| PAD-UFES-20 | EcoFair | 0.5288 | **0.4000** | 0.1940 |
+| PAD-UFES-20 | Lite | 0.5294 | 0.4000 | 0.1788 |
+| PAD-UFES-20 | EcoFair | 0.5288 | 0.4000 | 0.1940 |
 | PAD-UFES-20 | Heavy | 0.4956 | 0.3000 | 0.2690 |
-| BCN20000 | Lite | **0.4282** | **0.3612** | **0.1464** |
+| BCN20000 | Lite | 0.4282 | 0.3612 | 0.1464 |
 | BCN20000 | EcoFair | 0.4179 | 0.3241 | 0.1782 |
 | BCN20000 | Heavy | 0.4077 | 0.2921 | 0.2014 |
 
