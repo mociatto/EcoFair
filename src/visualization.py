@@ -1079,11 +1079,12 @@ def plot_fairness_disparity(fairness_lite, fairness_heavy, fairness_ecofair, dan
 
 def plot_clinical_safety_rescue(fairness_lite, fairness_heavy, fairness_ecofair, dangerous_classes):
     """
-    Plot TPR (Equal Opportunity) for dangerous classes across demographic subgroups,
-    showing Lite, EcoFair, and Heavy side-by-side per subgroup-class combination.
+    Plot macro-averaged malignancy TPR (Equal Opportunity) per demographic subgroup,
+    showing Pure Lite, EcoFair, and Pure Heavy as grouped bars.
 
-    Highlights where EcoFair 'rescues' detection rate relative to Lite alone.
-    One subplot per demographic category (Age groups, Sex groups).
+    For each subgroup the TPR values across all dangerous classes are averaged into a
+    single 'Overall Malignancy Detection' score, eliminating per-class label clutter.
+    Separate subplots are drawn for Age and Sex demographics.
 
     Args:
         fairness_lite: DataFrame from generate_fairness_report for lite model
@@ -1101,86 +1102,76 @@ def plot_clinical_safety_rescue(fairness_lite, fairness_heavy, fairness_ecofair,
     color_lite    = 'skyblue'
     color_ecofair = 'lightgreen'
     color_heavy   = 'orangered'
+    width         = 0.25
 
-    def _extract_tpr(df, subgroup_prefix):
-        """Return {subgroup_label: {class: tpr}} for rows matching the prefix."""
+    def _macro_tpr(df, subgroup_prefix):
+        """
+        Return {clean_subgroup_label: macro_avg_tpr} for rows matching prefix.
+        Macro-average = mean of TPR across dangerous_classes (ignoring NaN).
+        """
         if df is None or df.empty:
             return {}
-        subset = df[df['Subgroup'].str.startswith(subgroup_prefix, na=False)].copy()
+        subset = df[
+            df['Subgroup'].str.startswith(subgroup_prefix, na=False) &
+            df['Class'].isin(dangerous_classes)
+        ].copy()
+        if subset.empty:
+            return {}
         result = {}
         for subgroup, grp in subset.groupby('Subgroup'):
-            tpr_map = {}
-            for _, row in grp.iterrows():
-                cls = row['Class']
-                if cls in dangerous_classes:
-                    v = row['Equal_Opportunity_TPR']
-                    tpr_map[cls] = float(v) if pd.notna(v) else 0.0
-            if tpr_map:
-                result[subgroup] = tpr_map
+            tpr_vals = pd.to_numeric(grp['Equal_Opportunity_TPR'], errors='coerce').dropna()
+            if len(tpr_vals) == 0:
+                continue
+            clean = pd.Series([subgroup]).str.replace(
+                r'\s*\(n=\d+\)\s*$', '', regex=True).iloc[0].strip()
+            result[clean] = float(tpr_vals.mean())
         return result
 
     def _build_subplot(ax, subgroup_prefix, title):
-        tpr_lite    = _extract_tpr(fairness_lite,    subgroup_prefix)
-        tpr_ecofair = _extract_tpr(fairness_ecofair, subgroup_prefix)
-        tpr_heavy   = _extract_tpr(fairness_heavy,   subgroup_prefix)
+        avg_lite    = _macro_tpr(fairness_lite,    subgroup_prefix)
+        avg_ecofair = _macro_tpr(fairness_ecofair, subgroup_prefix)
+        avg_heavy   = _macro_tpr(fairness_heavy,   subgroup_prefix)
 
-        subgroups = sorted(set(list(tpr_lite.keys()) + list(tpr_ecofair.keys()) + list(tpr_heavy.keys())))
+        subgroups = sorted(set(list(avg_lite.keys()) + list(avg_ecofair.keys()) + list(avg_heavy.keys())))
         if not subgroups:
-            ax.text(0.5, 0.5, 'No data', ha='center', va='center', transform=ax.transAxes)
-            ax.set_title(title, fontsize=12, pad=10)
+            ax.text(0.5, 0.5, 'No data', ha='center', va='center', transform=ax.transAxes,
+                    fontsize=12, color='grey')
+            ax.set_title(title, fontsize=13, pad=12)
+            ax.set_ylim(0.0, 1.0)
             return
 
-        n_classes   = len(dangerous_classes)
-        n_subgroups = len(subgroups)
-        group_width = 0.7
-        bar_w       = group_width / 3
-        group_gap   = 1.2
-        x_centers   = np.arange(n_subgroups) * group_gap * n_classes
+        x = np.arange(len(subgroups))
 
-        handles = []
-        for cls_idx, cls in enumerate(dangerous_classes):
-            x_base = x_centers + cls_idx * group_gap
-            lite_vals    = [tpr_lite.get(sg,    {}).get(cls, 0.0) for sg in subgroups]
-            ecofair_vals = [tpr_ecofair.get(sg, {}).get(cls, 0.0) for sg in subgroups]
-            heavy_vals   = [tpr_heavy.get(sg,   {}).get(cls, 0.0) for sg in subgroups]
+        lite_vals    = [avg_lite.get(sg,    0.0) for sg in subgroups]
+        ecofair_vals = [avg_ecofair.get(sg, 0.0) for sg in subgroups]
+        heavy_vals   = [avg_heavy.get(sg,   0.0) for sg in subgroups]
 
-            b1 = ax.bar(x_base - bar_w, lite_vals,    bar_w, color=color_lite,    label='Pure Lite'  if cls_idx == 0 else '')
-            b2 = ax.bar(x_base,         ecofair_vals, bar_w, color=color_ecofair, label='EcoFair'    if cls_idx == 0 else '')
-            b3 = ax.bar(x_base + bar_w, heavy_vals,   bar_w, color=color_heavy,   label='Pure Heavy' if cls_idx == 0 else '')
-            if cls_idx == 0:
-                handles = [b1, b2, b3]
+        b1 = ax.bar(x - width, lite_vals,    width, color=color_lite,    label='Pure Lite',  edgecolor='white', linewidth=1.2)
+        b2 = ax.bar(x,         ecofair_vals, width, color=color_ecofair, label='EcoFair',    edgecolor='white', linewidth=1.2)
+        b3 = ax.bar(x + width, heavy_vals,   width, color=color_heavy,   label='Pure Heavy', edgecolor='white', linewidth=1.2)
 
-            # Class label below each group
-            for x_pos in x_base:
-                ax.text(x_pos, -0.07, cls, ha='center', va='top',
-                        fontsize=8, transform=ax.get_xaxis_transform())
+        # Value annotations
+        for bars in [b1, b2, b3]:
+            for bar in bars:
+                h = bar.get_height()
+                if h > 0:
+                    ax.text(bar.get_x() + bar.get_width() / 2., h + 0.02,
+                            f'{h:.2f}', ha='center', va='bottom', fontsize=9)
 
-        # Subgroup labels at group centres
-        sg_tick_positions = []
-        sg_tick_labels    = []
-        for sg_idx, sg in enumerate(subgroups):
-            centre = x_centers[sg_idx] + (n_classes - 1) * group_gap / 2
-            sg_tick_positions.append(centre)
-            # Strip ' (n=...)' for clean label
-            clean = pd.Series([sg]).str.replace(r'\s*\(n=\d+\)\s*$', '', regex=True).iloc[0].strip()
-            sg_tick_labels.append(clean)
-
-        ax.set_xticks(sg_tick_positions)
-        ax.set_xticklabels(sg_tick_labels, fontsize=10)
-        ax.tick_params(axis='x', which='both', length=0, pad=18)
+        ax.set_xticks(x)
+        ax.set_xticklabels(subgroups, fontsize=11)
         ax.set_ylim(0.0, 1.0)
-        ax.set_ylabel('TPR (Detection Rate)', fontsize=11)
-        ax.set_title(title, fontsize=12, pad=10)
-        ax.legend(handles=[b[0] for b in handles], labels=['Pure Lite', 'EcoFair', 'Pure Heavy'],
-                  loc='upper right', fontsize=9)
+        ax.set_ylabel('Aggregated Malignancy TPR', fontsize=11)
+        ax.set_title(title, fontsize=13, pad=12)
+        ax.legend(loc='lower right', fontsize=10)
         ax.grid(True, alpha=0.3, axis='y', linestyle='--')
         ax.xaxis.grid(False)
         ax.set_axisbelow(True)
 
-    fig, (ax_age, ax_sex) = plt.subplots(1, 2, figsize=(18, 6))
+    fig, (ax_age, ax_sex) = plt.subplots(1, 2, figsize=(14, 6))
     fig.suptitle(
         'Clinical Safety Rescue: Malignancy Detection Rate (TPR) Across Subgroups',
-        fontsize=13, fontweight='normal', y=1.02
+        fontsize=13, fontweight='normal'
     )
 
     _build_subplot(ax_age, 'Age ',  'Age Subgroups')
