@@ -12,6 +12,8 @@ from sklearn.metrics import confusion_matrix, accuracy_score
 from matplotlib.colors import LinearSegmentedColormap
 from . import config
 from . import features
+from . import routing
+from . import fairness
 
 # Use default style (seaborn styles set legend.frameon=False which overrides our fixes)
 plt.style.use('default')
@@ -1176,6 +1178,95 @@ def plot_clinical_safety_rescue(fairness_lite, fairness_heavy, fairness_ecofair,
 
     _build_subplot(ax_age, 'Age ',  'Age Subgroups')
     _build_subplot(ax_sex, 'Sex: ', 'Sex Subgroups')
+
+    plt.tight_layout()
+    return fig
+
+
+def plot_pareto_frontier(oof_lite, oof_heavy, y_true, meta_df, class_names, safe_classes, dangerous_classes,
+                         joules_lite, joules_heavy, title_suffix='', entropy_thresholds=None,
+                         heavy_weight=0.7, ax=None):
+    """
+    Plot Pareto Frontier: Energy vs. Safety trade-off by sweeping Softmax Entropy thresholds.
+
+    For each entropy threshold, applies gating logic to OOF predictions (no retraining),
+    computes Total Edge Energy (X) and Worst-Group TPR for dangerous classes (Y).
+    Annotates each point with exact (x, y) coordinates for transcription.
+
+    Args:
+        oof_lite: Out-of-fold lite predictions, shape (n_samples, n_classes)
+        oof_heavy: Out-of-fold heavy predictions, shape (n_samples, n_classes)
+        y_true: True labels (class indices), shape (n_samples,)
+        meta_df: Metadata DataFrame for subgroup definitions
+        class_names: List of class names
+        safe_classes: List of safe class names
+        dangerous_classes: List of dangerous class names
+        joules_lite: Energy per sample for lite model (J)
+        joules_heavy: Energy per sample for heavy model (J)
+        title_suffix: Optional string for figure title
+        entropy_thresholds: Array of entropy thresholds to sweep (default: np.linspace(0.1, 1.0, 10))
+        heavy_weight: Weight for heavy model in ensemble (default: 0.7)
+        ax: Optional matplotlib axes. If None, creates new figure.
+
+    Returns:
+        matplotlib.figure.Figure
+    """
+    if entropy_thresholds is None:
+        entropy_thresholds = np.linspace(0.1, 1.0, 10)
+
+    n_classes = len(class_names)
+    n_samples = len(y_true)
+    entropy_norm = routing.calculate_entropy(oof_lite) / np.log(n_classes)
+
+    energies = []
+    worst_group_tprs = []
+
+    for ent_t in entropy_thresholds:
+        route_mask = entropy_norm > ent_t
+        final_preds = oof_lite.copy()
+        final_preds[route_mask] = (1 - heavy_weight) * oof_lite[route_mask] + heavy_weight * oof_heavy[route_mask]
+        pred_labels = np.argmax(final_preds, axis=1)
+
+        total_energy = (n_samples - route_mask.sum()) * joules_lite + route_mask.sum() * joules_heavy
+
+        fairness_df = fairness.generate_fairness_report(
+            y_true, pred_labels, meta_df, class_names
+        )
+        subset = fairness_df[fairness_df['Class'].isin(dangerous_classes)].copy()
+        subset['_tpr'] = pd.to_numeric(subset['Equal_Opportunity_TPR'], errors='coerce')
+        sg_macro = subset.groupby('Subgroup')['_tpr'].mean().dropna()
+        worst_tpr = float(sg_macro.min()) if len(sg_macro) > 0 else 0.0
+
+        energies.append(total_energy)
+        worst_group_tprs.append(worst_tpr)
+
+    energies = np.array(energies)
+    worst_group_tprs = np.array(worst_group_tprs)
+    sort_idx = np.argsort(energies)
+    energies = energies[sort_idx]
+    worst_group_tprs = worst_group_tprs[sort_idx]
+
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, figsize=(10, 7))
+    else:
+        fig = ax.get_figure()
+
+    color = 'lightgreen'
+    ax.plot(energies, worst_group_tprs, color=color, linewidth=2.5, linestyle='-', marker='o',
+            markersize=8, markeredgecolor='white', markeredgewidth=1.5)
+
+    for i, (x, y) in enumerate(zip(energies, worst_group_tprs)):
+        ax.annotate(f'({x:.1f}, {y:.4f})', (x, y), textcoords='offset points',
+                    xytext=(8, 8), fontsize=9, ha='left', va='bottom',
+                    bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.8, edgecolor='gray'))
+
+    ax.set_xlabel('Total Edge Energy (Joules)', fontsize=12, fontweight='normal')
+    ax.set_ylabel('Worst-Group TPR (Dangerous Classes)', fontsize=12, fontweight='normal')
+    ax.set_title(f'Pareto Frontier: Energy vs. Safety Trade-off{title_suffix}',
+                 fontsize=14, fontweight='normal', pad=15)
+    ax.grid(True, alpha=0.3, axis='both', linestyle='--')
+    ax.set_axisbelow(True)
+    ax.set_ylim(0, 1.0)
 
     plt.tight_layout()
     return fig
