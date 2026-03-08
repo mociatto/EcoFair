@@ -1260,13 +1260,32 @@ def plot_pareto_frontier(oof_lite, oof_heavy, y_true, meta_df, class_names, safe
                     xytext=(8, 8), fontsize=9, ha='left', va='bottom',
                     bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.8, edgecolor='gray'))
 
+    # Dynamic axis limits with 5% padding
+    x_min, x_max = energies.min(), energies.max()
+    x_range = x_max - x_min
+    if x_range < 1e-9:
+        x_range = max(energies.max(), 1.0)
+    x_margin = 0.05 * x_range
+    ax.set_xlim(x_min - x_margin, x_max + x_margin)
+
+    y_min, y_max = worst_group_tprs.min(), worst_group_tprs.max()
+    y_range = y_max - y_min
+    if y_range < 1e-9:
+        y_range = 1.0
+    y_margin = 0.05 * y_range
+    ax.set_ylim(y_min - y_margin, y_max + y_margin)
+
     ax.set_xlabel('Total Edge Energy (Joules)', fontsize=12, fontweight='normal')
     ax.set_ylabel('Worst-Group TPR (Dangerous Classes)', fontsize=12, fontweight='normal')
     ax.set_title(f'Pareto Frontier: Energy vs. Safety Trade-off{title_suffix}',
                  fontsize=14, fontweight='normal', pad=15)
     ax.grid(True, alpha=0.3, axis='both', linestyle='--')
     ax.set_axisbelow(True)
-    ax.set_ylim(0, 1.0)
+
+    # Data export for PowerPoint: comma-separated lists
+    print("\n--- Pareto Frontier Data Export (copy for PowerPoint) ---")
+    print("X (Energy, J):", ", ".join(f"{x:.2f}" for x in energies))
+    print("Y (Worst-Group TPR):", ", ".join(f"{y:.4f}" for y in worst_group_tprs))
 
     plt.tight_layout()
     return fig
