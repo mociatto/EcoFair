@@ -153,6 +153,33 @@ def plot_metadata_distributions(meta_df, dangerous_classes, title_suffix=''):
     ax2.legend(loc='upper left', fontsize=10)
     ax2_twin.legend(loc='upper right', fontsize=10)
     
+    # Print simple tables for age and localization bins:
+    # e.g. "10-20: (180, 25.00)" where first is sample count, second is malignancy rate (%)
+    try:
+        print("\n--- Age bins: sample count and malignancy rate (%) ---")
+        for bin_label, count in age_counts.items():
+            rate = age_malignancy_rate.get(bin_label, np.nan)
+            if pd.isna(rate):
+                rate_str = "nan"
+            else:
+                rate_str = f"{rate:.2f}"
+            print(f"{bin_label}: ({int(count)}, {rate_str})")
+    except Exception:
+        # Fail silently if printing table is not possible
+        pass
+    
+    try:
+        print("\n--- Localization: sample count and malignancy rate (%) ---")
+        for loc_label, count in loc_counts.items():
+            rate = loc_malignancy_rate.get(loc_label, np.nan)
+            if pd.isna(rate):
+                rate_str = "nan"
+            else:
+                rate_str = f"{rate:.2f}"
+            print(f"{str(loc_label).title()}: ({int(count)}, {rate_str})")
+    except Exception:
+        pass
+    
     plt.tight_layout()
     
     return fig
@@ -1283,7 +1310,7 @@ def plot_pareto_frontier(oof_lite, oof_heavy, y_true, meta_df, class_names, safe
     ax.set_axisbelow(True)
 
     # Data export for PowerPoint: comma-separated lists
-    print("\n--- Pareto Frontier Data Export (copy for PowerPoint) ---")
+    print("\n--- Pareto Frontier Data Export ---")
     print("X (Energy, J):", ", ".join(f"{x:.2f}" for x in energies))
     print("Y (Worst-Group TPR):", ", ".join(f"{y:.4f}" for y in worst_group_tprs))
 

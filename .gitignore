@@ -34,8 +34,6 @@
 !.gitignore
 
 # development / not tracked
-main/
-main.ipynb
 main_ham.py
 main_pad.py
 main_bcn.py
