@@ -85,7 +85,7 @@ def get_class_weights(y_train, class_names):
 
 def run_cv_pipeline(X_heavy, X_lite, X_tab, y, meta_df, class_names, safe_classes, dangerous_classes,
                     lite_energy_dir, heavy_energy_dir,
-                    n_splits=5, risk_scaler=None, routing_strategy='threshold', budget=0.35):
+                    n_splits=5, risk_scaler=None, routing_strategy='threshold', budget=0.35, verbose=True):
     """
     Run 5-Fold Stratified Group Cross-Validation with Out-of-Fold (OOF) tracking.
     
@@ -149,7 +149,8 @@ def run_cv_pipeline(X_heavy, X_lite, X_tab, y, meta_df, class_names, safe_classe
     splits = data_loader.get_stratified_split(meta_df, y_labels, n_splits=n_splits)
     
     for fold, (train_idx, test_idx) in enumerate(splits):
-        print(f"\n--- Fold {fold + 1}/{n_splits} ---")
+        if verbose:
+            print(f"\n--- Fold {fold + 1}/{n_splits} ---")
         
         meta_train = meta_df.iloc[train_idx].reset_index(drop=True)
         y_train_labels = y_labels[train_idx]
@@ -289,8 +290,9 @@ def run_cv_pipeline(X_heavy, X_lite, X_tab, y, meta_df, class_names, safe_classe
         route_components_oof['ambiguity'][test_idx] = route_components['ambiguity']
         route_components_oof['safety'][test_idx] = route_components['safety']
         
-        print(f"  Lite: {acc_lite:.4f} | Heavy: {acc_heavy:.4f} | EcoFair: {acc_dynamic:.4f} | "
-              f"Route: {routing_rate*100:.1f}% | Energy: {energy_per_sample:.2f} J/sample")
+        if verbose:
+            print(f"  Lite: {acc_lite:.4f} | Heavy: {acc_heavy:.4f} | EcoFair: {acc_dynamic:.4f} | "
+                  f"Route: {routing_rate*100:.1f}% | Energy: {energy_per_sample:.2f} J/sample")
         
         tf.keras.backend.clear_session()
     
@@ -298,7 +300,7 @@ def run_cv_pipeline(X_heavy, X_lite, X_tab, y, meta_df, class_names, safe_classe
 
 
 def run_cv_pipeline_multi(pairs_data, pair_dirs, X_tab, y, meta_df, class_names, safe_classes, dangerous_classes,
-                          n_splits=5, risk_scaler=None, routing_strategy='threshold', budget=0.35):
+                          n_splits=5, risk_scaler=None, routing_strategy='threshold', budget=0.35, verbose=True):
     """
     Run CV pipeline for multiple model pairs.
 
@@ -314,15 +316,16 @@ def run_cv_pipeline_multi(pairs_data, pair_dirs, X_tab, y, meta_df, class_names,
     """
     results = []
     for idx, ((X_heavy, X_lite), (lite_dir, heavy_dir)) in enumerate(zip(pairs_data, pair_dirs)):
-        print(f"\n{'='*70}")
-        print(f"PAIR {idx + 1}/{len(pairs_data)}: {os.path.basename(lite_dir)} → {os.path.basename(heavy_dir)}")
-        print(f"{'='*70}")
+        if verbose:
+            print(f"\n{'='*70}")
+            print(f"PAIR {idx + 1}/{len(pairs_data)}: {os.path.basename(lite_dir)} → {os.path.basename(heavy_dir)}")
+            print(f"{'='*70}")
         res = run_cv_pipeline(
             X_heavy, X_lite, X_tab, y, meta_df,
             class_names=class_names, safe_classes=safe_classes, dangerous_classes=dangerous_classes,
             lite_energy_dir=lite_dir, heavy_energy_dir=heavy_dir,
             n_splits=n_splits, risk_scaler=risk_scaler,
-            routing_strategy=routing_strategy, budget=budget,
+            routing_strategy=routing_strategy, budget=budget, verbose=verbose,
         )
         results.append(res)
     return results

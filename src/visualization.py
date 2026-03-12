@@ -5,6 +5,7 @@ This module generates professional, journal-quality figures for the EcoFair pipe
 All functions accept data (DataFrames/Arrays) and return matplotlib figures.
 """
 
+import os
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -14,6 +15,7 @@ from . import config
 from . import features
 from . import routing
 from . import fairness
+from . import utils
 
 # Use default style (seaborn styles set legend.frameon=False which overrides our fixes)
 plt.style.use('default')
@@ -26,7 +28,7 @@ plt.rcParams['legend.edgecolor'] = 'black'
 plt.rcParams['legend.facecolor'] = 'white'
 
 
-def plot_metadata_distributions(meta_df, dangerous_classes, title_suffix=''):
+def plot_metadata_distributions(meta_df, dangerous_classes, title_suffix='', verbose=True):
     """
     Plot metadata distributions with malignancy rate overlays.
     
@@ -153,32 +155,31 @@ def plot_metadata_distributions(meta_df, dangerous_classes, title_suffix=''):
     ax2.legend(loc='upper left', fontsize=10)
     ax2_twin.legend(loc='upper right', fontsize=10)
     
-    # Print simple tables for age and localization bins:
+    # Print simple tables for age and localization bins (optional):
     # e.g. "10-20: (180, 25.00)" where first is sample count, second is malignancy rate (%)
-    try:
-        print("\n--- Age bins: sample count and malignancy rate (%) ---")
-        for bin_label, count in age_counts.items():
-            rate = age_malignancy_rate.get(bin_label, np.nan)
-            if pd.isna(rate):
-                rate_str = "nan"
-            else:
-                rate_str = f"{rate:.2f}"
-            print(f"{bin_label}: ({int(count)}, {rate_str})")
-    except Exception:
-        # Fail silently if printing table is not possible
-        pass
-    
-    try:
-        print("\n--- Localization: sample count and malignancy rate (%) ---")
-        for loc_label, count in loc_counts.items():
-            rate = loc_malignancy_rate.get(loc_label, np.nan)
-            if pd.isna(rate):
-                rate_str = "nan"
-            else:
-                rate_str = f"{rate:.2f}"
-            print(f"{str(loc_label).title()}: ({int(count)}, {rate_str})")
-    except Exception:
-        pass
+    if verbose:
+        try:
+            print("\n--- Age bins: sample count and malignancy rate (%) ---")
+            for bin_label, count in age_counts.items():
+                rate = age_malignancy_rate.get(bin_label, np.nan)
+                if pd.isna(rate):
+                    rate_str = "nan"
+                else:
+                    rate_str = f"{rate:.2f}"
+                print(f"{bin_label}: ({int(count)}, {rate_str})")
+        except Exception:
+            pass
+        try:
+            print("\n--- Localization: sample count and malignancy rate (%) ---")
+            for loc_label, count in loc_counts.items():
+                rate = loc_malignancy_rate.get(loc_label, np.nan)
+                if pd.isna(rate):
+                    rate_str = "nan"
+                else:
+                    rate_str = f"{rate:.2f}"
+                print(f"{str(loc_label).title()}: ({int(count)}, {rate_str})")
+        except Exception:
+            pass
     
     plt.tight_layout()
     
@@ -422,10 +423,16 @@ def plot_clinical_safety_rescue_multi(pairs_fairness, dangerous_classes, pair_la
 
 
 def plot_pareto_frontier_multi(pairs_oof, pairs_joules, y_true, meta_df, class_names, safe_classes,
-                               dangerous_classes, pair_labels=None, title_suffix='', entropy_thresholds=None):
+                               dangerous_classes, pair_labels=None, title_suffix='', entropy_thresholds=None,
+                               gap_thresholds=None, heavy_weights=None, n_samples_target=200, csv_path=None):
     """
     Plot 1×3 Pareto frontier subplots, one per pair. Each shows full Pareto curve (optimal points)
     and non-optimal/failed samples in grey.
+
+    Control path: vary (entropy_t, gap_t, heavy_weight) to get many (energy, worst_group_TPR) points.
+    - Entropy threshold: routes high-uncertainty samples.
+    - Gap threshold: routes samples with small safe-danger gap (ambiguity).
+    - Heavy weight: ensemble blend for routed samples (same energy, different TPR).
 
     Args:
         pairs_oof: List of (oof_lite, oof_heavy) per pair
@@ -435,13 +442,14 @@ def plot_pareto_frontier_multi(pairs_oof, pairs_joules, y_true, meta_df, class_n
         class_names, safe_classes, dangerous_classes: Class config
         pair_labels: Optional list of pair names
         title_suffix: Optional title suffix
-        entropy_thresholds: Array of entropy thresholds to sweep
+        entropy_thresholds: Array of entropy thresholds (default: ~14 values)
+        gap_thresholds: Array of safe-danger gap thresholds (default: ~7 values)
+        heavy_weights: Array of heavy model weights (default: ~2 values for ~200 points)
+        n_samples_target: Approximate number of points per subplot (default: 200)
 
     Returns:
         matplotlib.figure.Figure
     """
-    if entropy_thresholds is None:
-        entropy_thresholds = np.linspace(0.1, 1.0, 15)
     n_pairs = len(pairs_oof)
     if pair_labels is None:
         pair_labels = [f'Pair {i+1}' for i in range(n_pairs)]
@@ -449,28 +457,51 @@ def plot_pareto_frontier_multi(pairs_oof, pairs_joules, y_true, meta_df, class_n
     if n_pairs == 1:
         axes = [axes]
     n_classes = len(class_names)
+    all_rows = []
+    # Default grids to reach ~n_samples_target points
+    if entropy_thresholds is None:
+        entropy_thresholds = np.linspace(0.1, 1.0, max(10, int(n_samples_target ** 0.5)))
+    if gap_thresholds is None:
+        gap_thresholds = np.linspace(-0.5, 0.3, max(5, int(n_samples_target ** 0.33)))
+    if heavy_weights is None:
+        heavy_weights = np.linspace(0.4, 0.9, max(2, int(n_samples_target / (len(entropy_thresholds) * len(gap_thresholds)))))
     for ax, (oof_lite, oof_heavy), (j_l, j_h), plabel in zip(axes, pairs_oof, pairs_joules, pair_labels):
         j_l = j_l if j_l else 1.0
         j_h = j_h if j_h else 2.5
         entropy_norm = routing.calculate_entropy(oof_lite) / np.log(n_classes)
+        safe_idx = [class_names.index(c) for c in safe_classes if c in class_names]
+        danger_idx = [class_names.index(c) for c in dangerous_classes if c in class_names]
+        prob_safe = oof_lite[:, safe_idx].sum(axis=1) if safe_idx else np.zeros(len(oof_lite))
+        prob_danger = oof_lite[:, danger_idx].sum(axis=1) if danger_idx else np.zeros(len(oof_lite))
+        safe_danger_gap = prob_safe - prob_danger
         energies_all = []
         worst_tprs_all = []
         for ent_t in entropy_thresholds:
-            route_mask = entropy_norm > ent_t
-            final_preds = oof_lite.copy()
-            final_preds[route_mask] = 0.3 * oof_lite[route_mask] + 0.7 * oof_heavy[route_mask]
-            pred_labels = np.argmax(final_preds, axis=1)
-            n_samples = len(y_true)
-            total_energy = (n_samples - route_mask.sum()) * j_l + route_mask.sum() * j_h
-            fairness_df = fairness.generate_fairness_report(y_true, pred_labels, meta_df, class_names)
-            subset = fairness_df[fairness_df['Class'].isin(dangerous_classes)].copy()
-            subset['_tpr'] = pd.to_numeric(subset['Equal_Opportunity_TPR'], errors='coerce')
-            sg_macro = subset.groupby('Subgroup')['_tpr'].mean().dropna()
-            worst_tpr = float(sg_macro.min()) if len(sg_macro) > 0 else 0.0
-            energies_all.append(total_energy)
-            worst_tprs_all.append(worst_tpr)
+            for gap_t in gap_thresholds:
+                for hw in heavy_weights:
+                    route_mask = (entropy_norm > ent_t) | (safe_danger_gap < gap_t)
+                    final_preds = oof_lite.copy()
+                    final_preds[route_mask] = (1 - hw) * oof_lite[route_mask] + hw * oof_heavy[route_mask]
+                    pred_labels = np.argmax(final_preds, axis=1)
+                    n_samples = len(y_true)
+                    total_energy = (n_samples - route_mask.sum()) * j_l + route_mask.sum() * j_h
+                    fairness_df = fairness.generate_fairness_report(y_true, pred_labels, meta_df, class_names)
+                    subset = fairness_df[fairness_df['Class'].isin(dangerous_classes)].copy()
+                    subset['_tpr'] = pd.to_numeric(subset['Equal_Opportunity_TPR'], errors='coerce')
+                    sg_macro = subset.groupby('Subgroup')['_tpr'].mean().dropna()
+                    worst_tpr = float(sg_macro.min()) if len(sg_macro) > 0 else 0.0
+                    energies_all.append(total_energy)
+                    worst_tprs_all.append(worst_tpr)
         energies_all = np.array(energies_all)
         worst_tprs_all = np.array(worst_tprs_all)
+        for x, y in zip(energies_all, worst_tprs_all):
+            all_rows.append(
+                {
+                    "Pair": plabel,
+                    "Energy_J": float(x),
+                    "WorstGroupTPR": float(y),
+                }
+            )
         pareto_mask = np.ones(len(energies_all), dtype=bool)
         for i in range(len(energies_all)):
             for j in range(len(energies_all)):
@@ -493,6 +524,11 @@ def plot_pareto_frontier_multi(pairs_oof, pairs_joules, y_true, meta_df, class_n
         ax.set_title(f'{plabel}{title_suffix}')
         ax.legend()
         ax.grid(True, alpha=0.3)
+    if csv_path is not None and all_rows:
+        df = pd.DataFrame(all_rows)
+        output_dir = os.path.dirname(csv_path)
+        filename = os.path.basename(csv_path)
+        utils.save_results_csv(df, output_dir, filename)
     plt.tight_layout()
     return fig
 
