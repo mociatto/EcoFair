@@ -268,8 +268,12 @@ def run_cv_pipeline(X_heavy, X_lite, X_tab, y, meta_df, class_names, safe_classe
         fold_metrics['malignant_recall_dynamic'].append(_malignant_recall(y_true_test, pred_dynamic))
         n_routed = int(route_mask.sum())
         n_total = len(test_idx)
-        total_energy = (n_total - n_routed) * joules_lite + n_routed * joules_heavy
-        energy_per_sample = total_energy / n_total
+        # Energy accounting:
+        # - Pure Lite  : joules_lite per sample
+        # - Pure Heavy : joules_heavy per sample
+        # - EcoFair    : always pay lite, and pay heavy only for routed samples
+        #   E_ecofair_per_sample = joules_lite + (n_routed / n_total) * joules_heavy
+        energy_per_sample = joules_lite + (n_routed / n_total) * joules_heavy
         
         fold_metrics['acc_lite'].append(acc_lite)
         fold_metrics['acc_heavy'].append(acc_heavy)
