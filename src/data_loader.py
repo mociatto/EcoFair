@@ -147,6 +147,60 @@ def load_dataset_features(heavy_dir: str, lite_dir: str,
     return X_heavy, X_lite, aligned_meta
 
 
+def load_dataset_features_multi(pairs, meta_path, required_columns=None, id_col=None):
+    """
+    Load and align features for multiple (lite, heavy) model pairs.
+
+    Each pair is (lite_dir, heavy_dir). Loads all pairs, finds the intersection
+    of IDs across all feature sets, and returns aligned data for each pair.
+
+    Args:
+        pairs: List of (lite_dir, heavy_dir) tuples
+        meta_path: Path to metadata CSV or pre-loaded DataFrame
+        required_columns: Columns required for a row to be kept
+        id_col: Override for image-ID column name
+
+    Returns:
+        tuple: (pairs_data, aligned_meta)
+            - pairs_data: List of (X_heavy, X_lite) for each pair
+            - aligned_meta: DataFrame aligned to common IDs
+    """
+    def clean_id(s):
+        s = str(s).strip()
+        for ext in ['.jpg', '.png', '.jpeg']:
+            if s.lower().endswith(ext):
+                s = s[:-len(ext)]
+        return s.strip()
+
+    if not pairs:
+        raise ValueError("pairs must be non-empty")
+    pair_results = []
+    all_ids_sets = []
+    for lite_dir, heavy_dir in pairs:
+        X_h, X_l, meta = load_dataset_features(
+            heavy_dir, lite_dir, meta_path,
+            required_columns=required_columns,
+            id_col=id_col,
+        )
+        pair_results.append((X_h, X_l, meta))
+        ids = set(clean_id(x) for x in meta['image_id'].values)
+        all_ids_sets.append(ids)
+    common_ids = sorted(set.intersection(*all_ids_sets))
+    if len(common_ids) == 0:
+        raise ValueError("No common IDs across all model pairs")
+    aligned_pairs = []
+    for X_h, X_l, meta in pair_results:
+        id_to_idx = {clean_id(x): i for i, x in enumerate(meta['image_id'])}
+        aligned_h = np.vstack([X_h[id_to_idx[i]] for i in common_ids])
+        aligned_l = np.vstack([X_l[id_to_idx[i]] for i in common_ids])
+        aligned_pairs.append((aligned_h, aligned_l))
+    meta_first = pair_results[0][2]
+    id_to_row = {clean_id(x): i for i, x in enumerate(meta_first['image_id'])}
+    aligned_meta_rows = [meta_first.iloc[id_to_row[i]] for i in common_ids]
+    aligned_meta = pd.DataFrame(aligned_meta_rows).reset_index(drop=True)
+    return aligned_pairs, aligned_meta
+
+
 def get_stratified_split(meta_df: pd.DataFrame, y, n_splits: int = 5):
     """
     Create StratifiedGroupKFold splits for cross-validation.

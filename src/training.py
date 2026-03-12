@@ -5,12 +5,13 @@ This module handles the training loop, class weighting logic,
 and cross-validation pipeline orchestration.
 """
 
+import os
 import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 from tqdm.keras import TqdmCallback
 from sklearn.utils.class_weight import compute_class_weight
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, f1_score, balanced_accuracy_score, recall_score
 
 from . import config
 
@@ -133,7 +134,10 @@ def run_cv_pipeline(X_heavy, X_lite, X_tab, y, meta_df, class_names, safe_classe
     
     fold_metrics = {
         'acc_lite': [], 'acc_heavy': [], 'acc_dynamic': [],
-        'routing_rate': [], 'energy_cost': []
+        'routing_rate': [], 'energy_cost': [],
+        'macro_f1_lite': [], 'macro_f1_heavy': [], 'macro_f1_dynamic': [],
+        'balanced_acc_lite': [], 'balanced_acc_heavy': [], 'balanced_acc_dynamic': [],
+        'malignant_recall_lite': [], 'malignant_recall_heavy': [], 'malignant_recall_dynamic': [],
     }
     
     joules_lite = utils.load_energy_stats(lite_energy_dir)
@@ -242,10 +246,26 @@ def run_cv_pipeline(X_heavy, X_lite, X_tab, y, meta_df, class_names, safe_classe
                 safety_threshold=0.75,
             )
         
-        acc_lite = accuracy_score(y_true_test, np.argmax(lite_preds_test, axis=1))
-        acc_heavy = accuracy_score(y_true_test, np.argmax(heavy_preds_test, axis=1))
-        acc_dynamic = accuracy_score(y_true_test, np.argmax(final_preds, axis=1))
+        pred_lite = np.argmax(lite_preds_test, axis=1)
+        pred_heavy = np.argmax(heavy_preds_test, axis=1)
+        pred_dynamic = np.argmax(final_preds, axis=1)
+        acc_lite = accuracy_score(y_true_test, pred_lite)
+        acc_heavy = accuracy_score(y_true_test, pred_heavy)
+        acc_dynamic = accuracy_score(y_true_test, pred_dynamic)
         routing_rate = route_mask.sum() / len(route_mask)
+        danger_indices = [class_names.index(c) for c in dangerous_classes]
+        def _malignant_recall(y_true, y_pred):
+            r = recall_score(y_true, y_pred, labels=danger_indices, average='macro', zero_division=0)
+            return float(r) if not np.isnan(r) else 0.0
+        fold_metrics['macro_f1_lite'].append(f1_score(y_true_test, pred_lite, average='macro', zero_division=0))
+        fold_metrics['macro_f1_heavy'].append(f1_score(y_true_test, pred_heavy, average='macro', zero_division=0))
+        fold_metrics['macro_f1_dynamic'].append(f1_score(y_true_test, pred_dynamic, average='macro', zero_division=0))
+        fold_metrics['balanced_acc_lite'].append(balanced_accuracy_score(y_true_test, pred_lite))
+        fold_metrics['balanced_acc_heavy'].append(balanced_accuracy_score(y_true_test, pred_heavy))
+        fold_metrics['balanced_acc_dynamic'].append(balanced_accuracy_score(y_true_test, pred_dynamic))
+        fold_metrics['malignant_recall_lite'].append(_malignant_recall(y_true_test, pred_lite))
+        fold_metrics['malignant_recall_heavy'].append(_malignant_recall(y_true_test, pred_heavy))
+        fold_metrics['malignant_recall_dynamic'].append(_malignant_recall(y_true_test, pred_dynamic))
         n_routed = int(route_mask.sum())
         n_total = len(test_idx)
         total_energy = (n_total - n_routed) * joules_lite + n_routed * joules_heavy
@@ -271,3 +291,34 @@ def run_cv_pipeline(X_heavy, X_lite, X_tab, y, meta_df, class_names, safe_classe
         tf.keras.backend.clear_session()
     
     return fold_metrics, oof_lite, oof_heavy, oof_dynamic, route_mask_oof, route_components_oof
+
+
+def run_cv_pipeline_multi(pairs_data, pair_dirs, X_tab, y, meta_df, class_names, safe_classes, dangerous_classes,
+                          n_splits=5, risk_scaler=None, routing_strategy='threshold', budget=0.35):
+    """
+    Run CV pipeline for multiple model pairs.
+
+    Args:
+        pairs_data: List of (X_heavy, X_lite) for each pair
+        pair_dirs: List of (lite_dir, heavy_dir) for each pair
+        X_tab, y, meta_df: Shared tabular features, labels, metadata
+        class_names, safe_classes, dangerous_classes: Class config
+        n_splits, risk_scaler, routing_strategy, budget: CV and routing config
+
+    Returns:
+        list of (fold_metrics, oof_lite, oof_heavy, oof_dynamic, route_mask_oof, route_components_oof) per pair
+    """
+    results = []
+    for idx, ((X_heavy, X_lite), (lite_dir, heavy_dir)) in enumerate(zip(pairs_data, pair_dirs)):
+        print(f"\n{'='*70}")
+        print(f"PAIR {idx + 1}/{len(pairs_data)}: {os.path.basename(lite_dir)} → {os.path.basename(heavy_dir)}")
+        print(f"{'='*70}")
+        res = run_cv_pipeline(
+            X_heavy, X_lite, X_tab, y, meta_df,
+            class_names=class_names, safe_classes=safe_classes, dangerous_classes=dangerous_classes,
+            lite_energy_dir=lite_dir, heavy_energy_dir=heavy_dir,
+            n_splits=n_splits, risk_scaler=risk_scaler,
+            routing_strategy=routing_strategy, budget=budget,
+        )
+        results.append(res)
+    return results

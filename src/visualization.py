@@ -269,6 +269,234 @@ def plot_confusion_matrix_comparison(y_true, lite_preds, heavy_preds, dynamic_pr
     return fig
 
 
+def plot_confusion_matrix_comparison_multi(pairs_results, class_names, pair_labels=None):
+    """
+    Plot 3x3 grid of confusion matrices: 3 pairs × (Lite, Heavy, EcoFair).
+
+    Args:
+        pairs_results: List of (y_true, oof_lite, oof_heavy, oof_dynamic) per pair
+        class_names: List of class names
+        pair_labels: Optional list of pair names (e.g. ['Pair 1', 'Pair 2', 'Pair 3'])
+
+    Returns:
+        matplotlib.figure.Figure
+    """
+    if pair_labels is None:
+        pair_labels = [f'Pair {i+1}' for i in range(len(pairs_results))]
+    n_pairs = len(pairs_results)
+    fig, axes = plt.subplots(n_pairs, 3, figsize=(18, 6 * n_pairs))
+    if n_pairs == 1:
+        axes = axes.reshape(1, -1)
+    colors = {'lite': 'skyblue', 'heavy': 'orangered', 'dynamic': 'lightgreen'}
+    titles_row = ['Pure Lite', 'Pure Heavy', 'EcoFair']
+    for row, ((y_true, oof_lite, oof_heavy, oof_dynamic), plabel) in enumerate(zip(pairs_results, pair_labels)):
+        preds_list = [oof_lite, oof_heavy, oof_dynamic]
+        for col, (preds, t) in enumerate(zip(preds_list, titles_row)):
+            ax = axes[row, col]
+            pred_class = np.argmax(preds, axis=1) if len(preds.shape) > 1 else preds
+            cm = confusion_matrix(y_true, pred_class)
+            cm_norm = cm.astype('float') / (cm.sum(axis=1, keepdims=True) + 1e-10)
+            colors_list = ['white', colors['lite' if col == 0 else 'heavy' if col == 1 else 'dynamic']]
+            cmap = LinearSegmentedColormap.from_list('c', colors_list, N=100)
+            im = ax.imshow(cm_norm, interpolation='nearest', cmap=cmap, aspect='auto', vmin=0, vmax=1)
+            ax.set_title(f'{plabel}: {t}', fontsize=12)
+            ax.set_xticks(np.arange(len(class_names)))
+            ax.set_yticks(np.arange(len(class_names)))
+            ax.set_xticklabels(class_names)
+            ax.set_yticklabels(class_names)
+            for i in range(len(class_names)):
+                for j in range(len(class_names)):
+                    ax.text(j, i, f'{cm[i,j]}', ha='center', va='center', fontsize=9)
+    plt.tight_layout()
+    return fig
+
+
+def plot_fairness_summary_grouped(pairs_fairness_reports, dangerous_classes, pair_labels=None):
+    """
+    Plot 1x3 grouped bar charts: one per pair, each showing 3 metrics (macro_tpr_mean,
+    macro_tpr_worst_group, macro_tpr_gap) for Lite, EcoFair, Heavy.
+
+    Args:
+        pairs_fairness_reports: List of {'Lite': df, 'EcoFair': df, 'Heavy': df} per pair
+        dangerous_classes: List of dangerous class names
+        pair_labels: Optional list of pair names
+
+    Returns:
+        matplotlib.figure.Figure
+    """
+    def _macro_tpr_metrics(df):
+        if df is None or df.empty:
+            return np.nan, np.nan, np.nan
+        subset = df[df['Class'].isin(dangerous_classes)].copy()
+        subset['_tpr'] = pd.to_numeric(subset['Equal_Opportunity_TPR'], errors='coerce')
+        sg_macro = subset.groupby('Subgroup')['_tpr'].mean().dropna()
+        if sg_macro.empty:
+            return np.nan, np.nan, np.nan
+        return float(sg_macro.mean()), float(sg_macro.min()), float(sg_macro.max() - sg_macro.min())
+
+    n_pairs = len(pairs_fairness_reports)
+    if pair_labels is None:
+        pair_labels = [f'Pair {i+1}' for i in range(n_pairs)]
+    fig, axes = plt.subplots(1, n_pairs, figsize=(6 * n_pairs, 5))
+    if n_pairs == 1:
+        axes = [axes]
+    metrics = ['Macro TPR (mean)', 'Worst-group TPR', 'TPR Gap']
+    x = np.arange(3)
+    width = 0.25
+    colors_m = ['skyblue', 'lightgreen', 'orangered']
+    for ax, reports, plabel in zip(axes, pairs_fairness_reports, pair_labels):
+        lite_vals = _macro_tpr_metrics(reports.get('Lite'))
+        eco_vals = _macro_tpr_metrics(reports.get('EcoFair'))
+        heavy_vals = _macro_tpr_metrics(reports.get('Heavy'))
+        vals = [[lite_vals[i] if not np.isnan(lite_vals[i]) else 0 for i in range(3)],
+                [eco_vals[i] if not np.isnan(eco_vals[i]) else 0 for i in range(3)],
+                [heavy_vals[i] if not np.isnan(heavy_vals[i]) else 0 for i in range(3)]]
+        for i, (v, c, lbl) in enumerate(zip(vals, colors_m, ['Lite', 'EcoFair', 'Heavy'])):
+            ax.bar(x + (i - 1) * width, v, width, label=lbl, color=c)
+        ax.set_xticks(x)
+        ax.set_xticklabels(metrics)
+        ax.set_ylabel('Value')
+        ax.set_title(plabel)
+        ax.legend()
+        ax.set_ylim(0, 1.0)
+    plt.tight_layout()
+    return fig
+
+
+def plot_clinical_safety_rescue_multi(pairs_fairness, dangerous_classes, pair_labels=None):
+    """
+    Plot 2×3 grid: 2 demographics (Age, Sex) × 3 pairs.
+
+    Args:
+        pairs_fairness: List of (fairness_lite, fairness_heavy, fairness_ecofair) per pair
+        dangerous_classes: List of dangerous class names
+        pair_labels: Optional list of pair names
+
+    Returns:
+        matplotlib.figure.Figure
+    """
+    if pair_labels is None:
+        pair_labels = [f'Pair {i+1}' for i in range(len(pairs_fairness))]
+    fig, axes = plt.subplots(2, len(pairs_fairness), figsize=(6 * len(pairs_fairness), 10))
+    if len(pairs_fairness) == 1:
+        axes = axes.reshape(-1, 1)
+    color_lite, color_ecofair, color_heavy = 'skyblue', 'lightgreen', 'orangered'
+    width = 0.25
+
+    def _macro_tpr(df, prefix):
+        if df is None or df.empty:
+            return {}
+        subset = df[df['Subgroup'].str.startswith(prefix, na=False) & df['Class'].isin(dangerous_classes)].copy()
+        subset['_tpr'] = pd.to_numeric(subset['Equal_Opportunity_TPR'], errors='coerce')
+        result = {}
+        for sg, grp in subset.groupby('Subgroup'):
+            clean = str(sg).replace(' (n=', ' (n=')[:20]
+            result[sg] = float(grp['_tpr'].mean())
+        return result
+
+    for col, (fl, fh, fe), plabel in zip(range(len(pairs_fairness)), pairs_fairness, pair_labels):
+        for row, (prefix, dem_name) in enumerate([('Age ', 'Age'), ('Sex: ', 'Sex')]):
+            ax = axes[row, col]
+            al = _macro_tpr(fl, prefix)
+            ae = _macro_tpr(fe, prefix)
+            ah = _macro_tpr(fh, prefix)
+            subgroups = sorted(set(al.keys()) | set(ae.keys()) | set(ah.keys()))
+            if not subgroups:
+                ax.text(0.5, 0.5, 'No data', ha='center', va='center', transform=ax.transAxes)
+                ax.set_title(f'{plabel}: {dem_name}')
+                continue
+            x = np.arange(len(subgroups))
+            vl = [al.get(s, 0) for s in subgroups]
+            ve = [ae.get(s, 0) for s in subgroups]
+            vh = [ah.get(s, 0) for s in subgroups]
+            ax.bar(x - width, vl, width, color=color_lite, label='Lite')
+            ax.bar(x, ve, width, color=color_ecofair, label='EcoFair')
+            ax.bar(x + width, vh, width, color=color_heavy, label='Heavy')
+            ax.set_xticks(x)
+            ax.set_xticklabels([s.replace(prefix, '')[:12] for s in subgroups], rotation=45, ha='right')
+            ax.set_ylim(0, 1)
+            ax.set_title(f'{plabel}: {dem_name}')
+            ax.legend(loc='lower right', fontsize=8)
+    plt.tight_layout()
+    return fig
+
+
+def plot_pareto_frontier_multi(pairs_oof, pairs_joules, y_true, meta_df, class_names, safe_classes,
+                               dangerous_classes, pair_labels=None, title_suffix='', entropy_thresholds=None):
+    """
+    Plot 1×3 Pareto frontier subplots, one per pair. Each shows full Pareto curve (optimal points)
+    and non-optimal/failed samples in grey.
+
+    Args:
+        pairs_oof: List of (oof_lite, oof_heavy) per pair
+        pairs_joules: List of (joules_lite, joules_heavy) per pair
+        y_true: True labels (shared)
+        meta_df: Metadata
+        class_names, safe_classes, dangerous_classes: Class config
+        pair_labels: Optional list of pair names
+        title_suffix: Optional title suffix
+        entropy_thresholds: Array of entropy thresholds to sweep
+
+    Returns:
+        matplotlib.figure.Figure
+    """
+    if entropy_thresholds is None:
+        entropy_thresholds = np.linspace(0.1, 1.0, 15)
+    n_pairs = len(pairs_oof)
+    if pair_labels is None:
+        pair_labels = [f'Pair {i+1}' for i in range(n_pairs)]
+    fig, axes = plt.subplots(1, n_pairs, figsize=(7 * n_pairs, 6))
+    if n_pairs == 1:
+        axes = [axes]
+    n_classes = len(class_names)
+    for ax, (oof_lite, oof_heavy), (j_l, j_h), plabel in zip(axes, pairs_oof, pairs_joules, pair_labels):
+        j_l = j_l if j_l else 1.0
+        j_h = j_h if j_h else 2.5
+        entropy_norm = routing.calculate_entropy(oof_lite) / np.log(n_classes)
+        energies_all = []
+        worst_tprs_all = []
+        for ent_t in entropy_thresholds:
+            route_mask = entropy_norm > ent_t
+            final_preds = oof_lite.copy()
+            final_preds[route_mask] = 0.3 * oof_lite[route_mask] + 0.7 * oof_heavy[route_mask]
+            pred_labels = np.argmax(final_preds, axis=1)
+            n_samples = len(y_true)
+            total_energy = (n_samples - route_mask.sum()) * j_l + route_mask.sum() * j_h
+            fairness_df = fairness.generate_fairness_report(y_true, pred_labels, meta_df, class_names)
+            subset = fairness_df[fairness_df['Class'].isin(dangerous_classes)].copy()
+            subset['_tpr'] = pd.to_numeric(subset['Equal_Opportunity_TPR'], errors='coerce')
+            sg_macro = subset.groupby('Subgroup')['_tpr'].mean().dropna()
+            worst_tpr = float(sg_macro.min()) if len(sg_macro) > 0 else 0.0
+            energies_all.append(total_energy)
+            worst_tprs_all.append(worst_tpr)
+        energies_all = np.array(energies_all)
+        worst_tprs_all = np.array(worst_tprs_all)
+        pareto_mask = np.ones(len(energies_all), dtype=bool)
+        for i in range(len(energies_all)):
+            for j in range(len(energies_all)):
+                if i == j:
+                    continue
+                if energies_all[j] <= energies_all[i] and worst_tprs_all[j] >= worst_tprs_all[i]:
+                    pareto_mask[i] = False
+                    break
+        non_pareto_idx = ~pareto_mask
+        if non_pareto_idx.any():
+            ax.scatter(energies_all[non_pareto_idx], worst_tprs_all[non_pareto_idx],
+                       c='lightgray', s=40, alpha=0.7, label='Non-optimal')
+        if pareto_mask.any():
+            sort_idx = np.argsort(energies_all[pareto_mask])
+            ep = energies_all[pareto_mask][sort_idx]
+            wp = worst_tprs_all[pareto_mask][sort_idx]
+            ax.plot(ep, wp, 'o-', color='lightgreen', linewidth=2, markersize=8, label='Pareto frontier')
+        ax.set_xlabel('Total Edge Energy (J)')
+        ax.set_ylabel('Worst-Group TPR')
+        ax.set_title(f'{plabel}{title_suffix}')
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+    plt.tight_layout()
+    return fig
+
+
 def plot_value_added_bars(y_true, lite_preds, heavy_preds, dynamic_preds, class_names, route_mask=None, ax=None):
     """
     Plot stacked bar chart showing value-added distribution per class.
@@ -707,100 +935,6 @@ def plot_routing_breakdown_doughnut(entropy, safe_danger_gap, route_mask, total_
     return fig
 
 
-def plot_classwise_accuracy_bars(y_true, lite_preds, heavy_preds, dynamic_preds, class_names):
-    """
-    Plot per-class accuracy bar charts for Lite, Heavy, and Dynamic systems.
-    
-    Replicates logic from Cell 12b of EcoFair_Main.py.
-    
-    Args:
-        y_true: True labels (class indices), shape (n_samples,)
-        lite_preds: Lite predictions (class indices or probabilities)
-        heavy_preds: Heavy predictions (class indices or probabilities)
-        dynamic_preds: Dynamic predictions (class indices or probabilities)
-        class_names: List of class names (required).
-    
-    Returns:
-        matplotlib.figure.Figure: Figure object with three subplots
-    """
-    if class_names is None:
-        raise ValueError("class_names is required")
-    # Convert to class indices if probabilities
-    if len(lite_preds.shape) > 1:
-        lite_preds_class = np.argmax(lite_preds, axis=1)
-    else:
-        lite_preds_class = lite_preds
-    
-    if len(heavy_preds.shape) > 1:
-        heavy_preds_class = np.argmax(heavy_preds, axis=1)
-    else:
-        heavy_preds_class = heavy_preds
-    
-    if len(dynamic_preds.shape) > 1:
-        dynamic_preds_class = np.argmax(dynamic_preds, axis=1)
-    else:
-        dynamic_preds_class = dynamic_preds
-    
-    # Define colors
-    colors = {
-        'lite': 'skyblue',
-        'heavy': 'orangered',
-        'dynamic': 'lightgreen'
-    }
-    
-    # Helper function for class-wise accuracy
-    def calculate_class_wise_accuracy(y_true, y_pred, class_names):
-        class_accuracies = {}
-        for i, class_name in enumerate(class_names):
-            true_mask = (y_true == i)
-            if true_mask.sum() > 0:
-                correct = ((y_true == i) & (y_pred == i)).sum()
-                total = true_mask.sum()
-                class_accuracies[class_name] = correct / total
-            else:
-                class_accuracies[class_name] = 0.0
-        return class_accuracies
-    
-    # Compute class-wise accuracies
-    class_acc_lite = calculate_class_wise_accuracy(y_true, lite_preds_class, class_names)
-    class_acc_heavy = calculate_class_wise_accuracy(y_true, heavy_preds_class, class_names)
-    class_acc_dynamic = calculate_class_wise_accuracy(y_true, dynamic_preds_class, class_names)
-    
-    # Plot class-wise accuracy bar charts
-    fig, axes = plt.subplots(1, 3, figsize=(18, 6))
-    
-    systems_data = [
-        (class_acc_lite, 'Pure Lite System', colors['lite']),
-        (class_acc_heavy, 'Pure Heavy System', colors['heavy']),
-        (class_acc_dynamic, 'Dynamic Routing System', colors['dynamic'])
-    ]
-    
-    for ax, (class_acc_dict, title, bar_color) in zip(axes, systems_data):
-        class_names_list = class_names
-        accuracies_list = [class_acc_dict[cn] for cn in class_names_list]
-        
-        bars = ax.bar(class_names_list, accuracies_list, color=bar_color, linewidth=1.5)
-        
-        ax.set_ylabel('Class-wise Accuracy', fontsize=12, fontweight='normal')
-        ax.set_title(title, fontsize=14, fontweight='normal', pad=15)
-        ax.set_ylim([0, 1.0])
-        ax.grid(True, alpha=0.3, axis='y', linestyle='--')
-        ax.xaxis.grid(False)
-        ax.set_axisbelow(True)
-        ax.set_xticks(range(len(class_names_list)))
-        ax.set_xticklabels(class_names_list, rotation=0)
-        
-        for bar, acc in zip(bars, accuracies_list):
-            height = bar.get_height()
-            ax.text(bar.get_x() + bar.get_width()/2., height + 0.02,
-                   f'{acc:.3f}',
-                   ha='center', va='bottom', fontsize=10, fontweight='normal')
-    
-    plt.tight_layout()
-    
-    return fig
-
-
 def plot_gender_age_accuracy(y_true, lite_preds, heavy_preds, dynamic_preds, meta_df, class_names, axes=None):
     """
     Plot model accuracy by Gender and Age categories.
@@ -977,132 +1111,6 @@ def plot_gender_age_accuracy(y_true, lite_preds, heavy_preds, dynamic_preds, met
     
     plt.tight_layout()
     
-    return fig
-
-
-def plot_fairness_disparity(fairness_lite, fairness_heavy, fairness_ecofair, dangerous_classes):
-    """
-    Plot side-by-side Gender and Age disparity gaps for dangerous classes.
-    
-    Left: |TPR_Male - TPR_Female|. Right: Max(TPR) - Min(TPR) across age groups.
-    Lower gap indicates fairer performance. Filters out subgroups containing 'Unknown'.
-    
-    Args:
-        fairness_lite: DataFrame from generate_fairness_report for lite model
-        fairness_heavy: DataFrame from generate_fairness_report for heavy model
-        fairness_ecofair: DataFrame from generate_fairness_report for EcoFair (dynamic) model
-        dangerous_classes: List of dangerous class names (required).
-    
-    Returns:
-        matplotlib.figure.Figure: Figure with two subplots
-    """
-    if dangerous_classes is None:
-        raise ValueError("dangerous_classes is required")
-    dangerous_classes = list(dangerous_classes)
-    
-    def _filter_unknown(df):
-        """Remove rows where Subgroup contains 'Unknown'."""
-        if df.empty or 'Subgroup' not in df.columns:
-            return df
-        return df[~df['Subgroup'].str.contains('Unknown', case=False, na=False)].copy()
-    
-    def _strip_count(series):
-        """Strip ' (n=...)' suffix from Subgroup for matching."""
-        return series.str.replace(r'\s*\(n=\d+\)\s*$', '', regex=True).str.strip()
-    
-    def _get_gender_gap(df):
-        """|TPR_Male - TPR_Female| for each dangerous class."""
-        df = _filter_unknown(df)
-        gaps = {}
-        for cls in dangerous_classes:
-            df_cls = df[(df['Class'] == cls) & (df['Subgroup'].str.startswith('Sex: '))]
-            if df_cls.empty:
-                gaps[cls] = np.nan
-                continue
-            df_cls = df_cls.copy()
-            df_cls['_sub'] = _strip_count(df_cls['Subgroup'])
-            piv = df_cls.drop_duplicates('_sub').set_index('_sub')['Equal_Opportunity_TPR']
-            male_tpr = piv.get('Sex: Male', np.nan)
-            female_tpr = piv.get('Sex: Female', np.nan)
-            if pd.notna(male_tpr) and pd.notna(female_tpr):
-                gaps[cls] = abs(float(male_tpr) - float(female_tpr))
-            else:
-                gaps[cls] = np.nan
-        return gaps
-    
-    def _get_age_gap(df):
-        """Max(TPR) - Min(TPR) across <30, 30-60, 60+ for each dangerous class."""
-        df = _filter_unknown(df)
-        gaps = {}
-        age_subs = ['Age <30', 'Age 30-60', 'Age 60+']
-        for cls in dangerous_classes:
-            df_cls = df[(df['Class'] == cls) & (df['Subgroup'].str.startswith('Age '))]
-            if df_cls.empty:
-                gaps[cls] = np.nan
-                continue
-            df_cls = df_cls.copy()
-            df_cls['_sub'] = _strip_count(df_cls['Subgroup'])
-            piv = df_cls.drop_duplicates('_sub').set_index('_sub')['Equal_Opportunity_TPR']
-            vals = [float(piv.get(s, np.nan)) for s in age_subs if s in piv.index]
-            vals = [v for v in vals if pd.notna(v)]
-            gaps[cls] = (float(np.max(vals)) - float(np.min(vals))) if len(vals) >= 2 else np.nan
-        return gaps
-    
-    def _safe(v):
-        return v if pd.notna(v) else 0.0
-    
-    gaps_lite_g = _get_gender_gap(fairness_lite)
-    gaps_heavy_g = _get_gender_gap(fairness_heavy)
-    gaps_ecofair_g = _get_gender_gap(fairness_ecofair)
-    
-    gaps_lite_a = _get_age_gap(fairness_lite)
-    gaps_heavy_a = _get_age_gap(fairness_heavy)
-    gaps_ecofair_a = _get_age_gap(fairness_ecofair)
-    
-    x = np.arange(len(dangerous_classes))
-    width = 0.25
-    
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
-    
-    # Left: Gender Disparity
-    ax1.bar(x - width, [_safe(gaps_lite_g.get(c, np.nan)) for c in dangerous_classes],
-            width, label='Pure Lite', color='skyblue')
-    ax1.bar(x, [_safe(gaps_heavy_g.get(c, np.nan)) for c in dangerous_classes],
-            width, label='Pure Heavy', color='orangered')
-    ax1.bar(x + width, [_safe(gaps_ecofair_g.get(c, np.nan)) for c in dangerous_classes],
-            width, label='EcoFair', color='lightgreen')
-    ax1.set_xlabel('Dangerous Class', fontsize=12)
-    ax1.set_ylabel('Absolute TPR Disparity', fontsize=12)
-    ax1.set_title('Gender Disparity (|TPR_Male - TPR_Female|)', fontsize=12, pad=10)
-    ax1.set_xticks(x)
-    ax1.set_xticklabels(dangerous_classes)
-    ax1.legend(loc='upper right', fontsize=10)
-    ax1.set_ylim(0, 1.0)
-    ax1.grid(True, alpha=0.3, axis='y', linestyle='--')
-    ax1.xaxis.grid(False)
-    
-    # Right: Age Disparity
-    ax2.bar(x - width, [_safe(gaps_lite_a.get(c, np.nan)) for c in dangerous_classes],
-            width, label='Pure Lite', color='skyblue')
-    ax2.bar(x, [_safe(gaps_heavy_a.get(c, np.nan)) for c in dangerous_classes],
-            width, label='Pure Heavy', color='orangered')
-    ax2.bar(x + width, [_safe(gaps_ecofair_a.get(c, np.nan)) for c in dangerous_classes],
-            width, label='EcoFair', color='lightgreen')
-    ax2.set_xlabel('Dangerous Class', fontsize=12)
-    ax2.set_ylabel('Absolute TPR Disparity', fontsize=12)
-    ax2.set_title('Age Disparity (Max - Min TPR across <30, 30-60, 60+)', fontsize=12, pad=10)
-    ax2.set_xticks(x)
-    ax2.set_xticklabels(dangerous_classes)
-    ax2.legend(loc='upper right', fontsize=10)
-    ax2.set_ylim(0, 1.0)
-    ax2.grid(True, alpha=0.3, axis='y', linestyle='--')
-    ax2.xaxis.grid(False)
-    
-    props = dict(boxstyle='round', facecolor='wheat', alpha=0.8)
-    fig.text(0.5, 0.02, 'Lower gap indicates fairer performance across demographic.',
-             ha='center', fontsize=10, bbox=props)
-    
-    plt.tight_layout(rect=[0, 0.05, 1, 1])
     return fig
 
 
