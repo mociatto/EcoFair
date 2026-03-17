@@ -1,0 +1,34 @@
+# Ignore everything except src folder and main notebook
+*
+
+# But don't ignore src folder
+!src/
+!src/**
+
+# Don't ignore fig (README assets)
+!fig/
+!fig/**
+
+# Don't ignore feature_extraction (extractor notebooks)
+!feature_extraction/
+!feature_extraction/**
+
+# Don't ignore main pipeline notebooks (at repo root)
+!ecofair-ham.ipynb
+!ecofair-pad.ipynb
+!ecofair-bcn.ipynb
+
+# Don't ignore readme files
+!README.md
+
+# Ignore Python cache files
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# macOS
+.DS_Store
+
+# Don't ignore .gitignore itself
+!.gitignore
