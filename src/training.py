@@ -83,6 +83,19 @@ def get_class_weights(y_train, class_names):
     return class_weight_dict
 
 
+def _lite_routing_signals(lite_preds, class_names, safe_classes, dangerous_classes):
+    """Compute normalised entropy and safe/danger routing signals from lite predictions."""
+    from . import routing
+    n_classes = len(class_names)
+    entropy = routing.calculate_entropy(lite_preds) / np.log(n_classes)
+    safe_indices = [class_names.index(c) for c in safe_classes]
+    danger_indices = [class_names.index(c) for c in dangerous_classes]
+    prob_safe = lite_preds[:, safe_indices].sum(axis=1)
+    prob_danger = lite_preds[:, danger_indices].sum(axis=1)
+    safe_danger_gap = prob_safe - prob_danger
+    return entropy, safe_danger_gap, prob_safe, prob_danger
+
+
 def run_cv_pipeline(X_heavy, X_lite, X_tab, y, meta_df, class_names, safe_classes, dangerous_classes,
                     lite_energy_dir, heavy_energy_dir,
                     n_splits=5, risk_scaler=None, routing_strategy='threshold', budget=0.35, verbose=True):
@@ -116,7 +129,7 @@ def run_cv_pipeline(X_heavy, X_lite, X_tab, y, meta_df, class_names, safe_classe
             - route_components_oof: dict with uncertainty, ambiguity, safety masks
     """
     from . import data_loader, models, routing, features, utils
-    
+
     if class_names is None or safe_classes is None or dangerous_classes is None:
         raise ValueError("class_names, safe_classes, and dangerous_classes are required")
     if lite_energy_dir is None or heavy_energy_dir is None:
@@ -130,14 +143,30 @@ def run_cv_pipeline(X_heavy, X_lite, X_tab, y, meta_df, class_names, safe_classe
         'uncertainty': np.zeros(n_samples, dtype=bool),
         'ambiguity': np.zeros(n_samples, dtype=bool),
         'safety': np.zeros(n_samples, dtype=bool),
+        'fold_id': np.full(n_samples, -1, dtype=np.int16),
+        'entropy': np.full(n_samples, np.nan, dtype=np.float32),
+        'safe_danger_gap': np.full(n_samples, np.nan, dtype=np.float32),
+        'prob_safe': np.full(n_samples, np.nan, dtype=np.float32),
+        'prob_danger': np.full(n_samples, np.nan, dtype=np.float32),
+        'patient_risk': np.full(n_samples, np.nan, dtype=np.float32),
+        'entropy_threshold': np.full(n_samples, np.nan, dtype=np.float32),
+        'gap_threshold': np.full(n_samples, np.nan, dtype=np.float32),
+        'risk_threshold': np.full(n_samples, np.nan, dtype=np.float32),
+        'heavy_weight': np.full(n_samples, np.nan, dtype=np.float32),
     }
-    
+
+    if 'risk_score' in meta_df.columns:
+        route_components_oof['patient_risk'] = meta_df['risk_score'].values.astype(np.float32)
+
     fold_metrics = {
         'acc_lite': [], 'acc_heavy': [], 'acc_dynamic': [],
         'routing_rate': [], 'energy_cost': [],
         'macro_f1_lite': [], 'macro_f1_heavy': [], 'macro_f1_dynamic': [],
         'balanced_acc_lite': [], 'balanced_acc_heavy': [], 'balanced_acc_dynamic': [],
         'malignant_recall_lite': [], 'malignant_recall_heavy': [], 'malignant_recall_dynamic': [],
+        'entropy_threshold': [], 'gap_threshold': [], 'heavy_weight': [], 'risk_threshold': [],
+        'routing_rate_uncertainty': [], 'routing_rate_ambiguity': [], 'routing_rate_risk': [],
+        'energy_lite': [], 'energy_heavy': [],
     }
     
     joules_lite = utils.load_energy_stats(lite_energy_dir)
@@ -194,13 +223,19 @@ def run_cv_pipeline(X_heavy, X_lite, X_tab, y, meta_df, class_names, safe_classe
         
         y_true_test = y_labels[test_idx]
         
+        entropy_test, safe_danger_gap_test, prob_safe_test, prob_danger_test = _lite_routing_signals(
+            lite_preds_test, class_names, safe_classes, dangerous_classes,
+        )
+
         if routing_strategy == 'budget':
             # Budget routing: force fixed 35% of most-uncertain samples to heavy model.
             # Used for domain-shifted datasets where threshold optimisation is unreliable.
+            budget_heavy_weight = 0.5
             final_preds, route_mask, _ = routing.apply_budget_routing(
                 lite_preds_test, heavy_preds_test,
                 class_names, safe_classes, dangerous_classes,
                 budget=budget,
+                heavy_weight=budget_heavy_weight,
             )
             # Budget routing has no per-reason decomposition; mark all routed as uncertainty
             route_components = {
@@ -208,17 +243,12 @@ def run_cv_pipeline(X_heavy, X_lite, X_tab, y, meta_df, class_names, safe_classe
                 'ambiguity':   np.zeros(len(route_mask), dtype=bool),
                 'safety':      np.zeros(len(route_mask), dtype=bool),
             }
+            fold_entropy_t = np.nan
+            fold_gap_t = np.nan
+            fold_heavy_weight = budget_heavy_weight
+            fold_risk_t = np.nan
         else:
             # Threshold routing with SafetyFirstOptimizer (HAM / source domain)
-            # Normalise entropy to [0, 1] so the optimizer's grid values are proportions
-            # of maximum possible uncertainty — consistent with apply_threshold_routing.
-            entropy_test = routing.calculate_entropy(lite_preds_test) / np.log(n_classes)
-            safe_indices   = [class_names.index(c) for c in safe_classes]
-            danger_indices = [class_names.index(c) for c in dangerous_classes]
-            prob_safe   = lite_preds_test[:, safe_indices].sum(axis=1)
-            prob_danger = lite_preds_test[:, danger_indices].sum(axis=1)
-            safe_danger_gap_test = prob_safe - prob_danger
-            
             heavy_baseline_acc = accuracy_score(y_true_test, np.argmax(heavy_preds_test, axis=1))
             optimizer = routing.SafetyFirstOptimizer(
                 lite_preds_test, heavy_preds_test, y_true_test,
@@ -246,7 +276,11 @@ def run_cv_pipeline(X_heavy, X_lite, X_tab, y, meta_df, class_names, safe_classe
                 patient_risk=patient_risk,
                 safety_threshold=0.75,
             )
-        
+            fold_entropy_t = optimal_config['entropy_t']
+            fold_gap_t = optimal_config['gap_t']
+            fold_heavy_weight = optimal_config['heavy_weight']
+            fold_risk_t = 0.75
+
         pred_lite = np.argmax(lite_preds_test, axis=1)
         pred_heavy = np.argmax(heavy_preds_test, axis=1)
         pred_dynamic = np.argmax(final_preds, axis=1)
@@ -281,7 +315,16 @@ def run_cv_pipeline(X_heavy, X_lite, X_tab, y, meta_df, class_names, safe_classe
         fold_metrics['acc_dynamic'].append(acc_dynamic)
         fold_metrics['routing_rate'].append(routing_rate)
         fold_metrics['energy_cost'].append(energy_per_sample)
-        
+        fold_metrics['entropy_threshold'].append(fold_entropy_t)
+        fold_metrics['gap_threshold'].append(fold_gap_t)
+        fold_metrics['heavy_weight'].append(fold_heavy_weight)
+        fold_metrics['risk_threshold'].append(fold_risk_t)
+        fold_metrics['routing_rate_uncertainty'].append(route_components['uncertainty'].mean())
+        fold_metrics['routing_rate_ambiguity'].append(route_components['ambiguity'].mean())
+        fold_metrics['routing_rate_risk'].append(route_components['safety'].mean())
+        fold_metrics['energy_lite'].append(joules_lite)
+        fold_metrics['energy_heavy'].append(joules_heavy)
+
         oof_lite[test_idx] = lite_preds_test
         oof_heavy[test_idx] = heavy_preds_test
         oof_dynamic[test_idx] = final_preds
@@ -289,6 +332,15 @@ def run_cv_pipeline(X_heavy, X_lite, X_tab, y, meta_df, class_names, safe_classe
         route_components_oof['uncertainty'][test_idx] = route_components['uncertainty']
         route_components_oof['ambiguity'][test_idx] = route_components['ambiguity']
         route_components_oof['safety'][test_idx] = route_components['safety']
+        route_components_oof['fold_id'][test_idx] = fold
+        route_components_oof['entropy'][test_idx] = entropy_test
+        route_components_oof['safe_danger_gap'][test_idx] = safe_danger_gap_test
+        route_components_oof['prob_safe'][test_idx] = prob_safe_test
+        route_components_oof['prob_danger'][test_idx] = prob_danger_test
+        route_components_oof['entropy_threshold'][test_idx] = fold_entropy_t
+        route_components_oof['gap_threshold'][test_idx] = fold_gap_t
+        route_components_oof['risk_threshold'][test_idx] = fold_risk_t
+        route_components_oof['heavy_weight'][test_idx] = fold_heavy_weight
         
         if verbose:
             print(f"  Lite: {acc_lite:.4f} | Heavy: {acc_heavy:.4f} | EcoFair: {acc_dynamic:.4f} | "
