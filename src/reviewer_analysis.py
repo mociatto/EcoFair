@@ -143,7 +143,8 @@ def load_pair_npz(export_dir, pair_index):
     if not os.path.exists(path):
         warnings.warn(f"Missing NPZ: {path}")
         return None
-    return {k: data[k] for k, data in np.load(path).items()}
+    with np.load(path) as npz:
+        return {k: npz[k] for k in npz.files}
 
 
 # ---------------------------------------------------------------------------
