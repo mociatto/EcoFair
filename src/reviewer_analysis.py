@@ -392,7 +392,7 @@ def _apply_threshold_routing_from_arrays(data, mult=1.0):
     return probs, route_mask
 
 
-def run_threshold_sensitivity(exports):
+def run_threshold_sensitivity(exports, verbose=False):
     rows, condition_rows = [], []
     for exp in exports:
         if exp is None:
@@ -420,32 +420,57 @@ def run_threshold_sensitivity(exports):
                     "expected_energy_per_sample": energy_per_sample(float(route_mask.mean()), j_lite, j_heavy),
                     **cls, **fair,
                 })
-    if condition_rows:
+    if condition_rows and verbose:
         print("\nThreshold condition reconstruction agreement (1.0 = exact match):")
         print(pd.DataFrame(condition_rows)[["dataset", "pair_index", "entropy_agreement", "gap_agreement", "risk_agreement"]].to_string(index=False))
-    return pd.DataFrame(rows)
+    return pd.DataFrame(rows), pd.DataFrame(condition_rows) if condition_rows else pd.DataFrame()
 
 
-def plot_threshold_sensitivity(thresh_df, out_dir):
+def plot_threshold_sensitivity(thresh_df, out_dir, verbose=False):
     os.makedirs(out_dir, exist_ok=True)
     plot_paths = []
     if thresh_df is None or thresh_df.empty or "dataset" not in thresh_df.columns:
         return plot_paths
     metrics = [
-        ("routing_rate", "Routing rate"),
-        ("balanced_accuracy", "Balanced accuracy"),
-        ("malignant_recall", "Malignant recall"),
-        ("expected_energy_per_sample", "Energy per sample (J)"),
+        ("routing_rate", "Routing"),
+        ("balanced_accuracy", "Bal. acc."),
+        ("malignant_recall", "Mal. recall"),
+        ("expected_energy_per_sample", "Energy (J)"),
     ]
-    for dataset in thresh_df["dataset"].unique():
+    dataset_list = [ds for ds in DATASET_NAMES if ds in thresh_df["dataset"].unique()]
+    if not dataset_list:
+        dataset_list = list(thresh_df["dataset"].unique())
+
+    fig_row, axes = plt.subplots(1, len(dataset_list), figsize=(5 * len(dataset_list), 4), squeeze=False)
+    for ax, dataset in zip(axes[0], dataset_list):
         sub = thresh_df[thresh_df["dataset"] == dataset]
         agg = sub.groupby("threshold_multiplier")[[m[0] for m in metrics]].mean().reset_index()
-        fig, ax = plt.subplots(figsize=(8, 5))
         for col, label in metrics:
-            ax.plot(agg["threshold_multiplier"], agg[col], marker="o", label=label)
+            ax.plot(agg["threshold_multiplier"], agg[col], marker="o", label=label, linewidth=1.5)
         ax.set_xlabel("Threshold multiplier")
-        ax.set_title(f"Threshold sensitivity — {dataset}")
-        ax.legend(fontsize=8)
+        ax.set_title(dataset)
+        ax.legend(fontsize=7, loc="best")
+        ax.grid(True, alpha=0.3)
+
+    fig_row.suptitle("Threshold sensitivity", fontsize=12, y=1.02)
+    fig_row.tight_layout()
+    combined_path = os.path.join(out_dir, "threshold_sensitivity_all_datasets.png")
+    fig_row.savefig(combined_path, dpi=150, bbox_inches="tight")
+    plot_paths.append(combined_path)
+    if verbose:
+        plt.show()
+    else:
+        plt.close(fig_row)
+
+    for dataset in dataset_list:
+        sub = thresh_df[thresh_df["dataset"] == dataset]
+        agg = sub.groupby("threshold_multiplier")[[m[0] for m in metrics]].mean().reset_index()
+        fig, ax = plt.subplots(figsize=(6, 4))
+        for col, label in metrics:
+            ax.plot(agg["threshold_multiplier"], agg[col], marker="o", label=label, linewidth=1.5)
+        ax.set_xlabel("Threshold multiplier")
+        ax.set_title(dataset)
+        ax.legend(fontsize=7)
         ax.grid(True, alpha=0.3)
         fig.tight_layout()
         path = os.path.join(out_dir, f"threshold_sensitivity_{dataset.replace('-', '_')}.png")
@@ -576,7 +601,7 @@ def run_statistical_tests(exports):
     return fold_df if boot_df.empty else pd.concat([fold_df, boot_df], ignore_index=True, sort=False)
 
 
-def run_energy_latency_transmission(exports):
+def run_energy_latency_transmission(exports, verbose=False):
     rows, latency_missing = [], False
     for exp in exports:
         if exp is None:
@@ -610,7 +635,7 @@ def run_energy_latency_transmission(exports):
                 "embedding_kb_lite": kb_lite, "embedding_kb_heavy": kb_heavy,
                 "transmission_kb_selected_only": tx_sel, "transmission_kb_conservative": tx_con,
             })
-    if latency_missing:
+    if latency_missing and verbose:
         print("\nNote: latency statistics were unavailable in the saved energy_stats artefacts for some pairs.")
     return pd.DataFrame(rows)
 
@@ -658,7 +683,7 @@ def run_final_summary(ablation_df, stats_df, uncertainty_df, energy_df):
 # Orchestrator
 # ---------------------------------------------------------------------------
 
-def run_additional_analyses(export_dirs_by_dataset, output_dir):
+def run_additional_analyses(export_dirs_by_dataset, output_dir, verbose=False):
     """
     Run all reviewer-facing post-hoc analyses.
 
@@ -677,28 +702,37 @@ def run_additional_analyses(export_dirs_by_dataset, output_dir):
     if not loaded:
         return {"loaded": [], "export_dirs": export_dirs_by_dataset, "saved_files": [], "output_dir": output_dir}
 
-    print("\n1. Routing signal ablation...")
+    if not loaded:
+        return {"loaded": [], "export_dirs": export_dirs_by_dataset, "saved_files": [], "output_dir": output_dir, "exports": exports}
+
+    if verbose:
+        print("\n1. Routing signal ablation...")
     ablation_df = run_routing_ablation(exports)
     saved.extend(save_results_table(ablation_df, output_dir, "routing_ablation_summary.csv", "routing_ablation_summary_latex.txt", "Routing signal ablation summary"))
 
-    print("2. Threshold sensitivity...")
-    thresh_df = run_threshold_sensitivity(exports)
+    if verbose:
+        print("2. Threshold sensitivity...")
+    thresh_df, condition_df = run_threshold_sensitivity(exports, verbose=verbose)
     saved.extend(save_results_table(thresh_df, output_dir, "threshold_sensitivity_summary.csv", "threshold_sensitivity_latex.txt", "Threshold sensitivity summary"))
-    saved.extend(plot_threshold_sensitivity(thresh_df, output_dir))
+    saved.extend(plot_threshold_sensitivity(thresh_df, output_dir, verbose=verbose))
 
-    print("3. Uncertainty and calibration quality...")
+    if verbose:
+        print("3. Uncertainty and calibration quality...")
     uncertainty_df = run_uncertainty_quality(exports)
     saved.extend(save_results_table(uncertainty_df, output_dir, "uncertainty_quality_summary.csv", "uncertainty_quality_latex.txt", "Uncertainty and calibration quality"))
 
-    print("4. Statistical testing...")
+    if verbose:
+        print("4. Statistical testing...")
     stats_df = run_statistical_tests(exports)
     saved.extend(save_results_table(stats_df, output_dir, "statistical_tests_summary.csv", "statistical_tests_latex.txt", "Statistical tests summary"))
 
-    print("5. Energy, latency, and transmission...")
-    energy_df = run_energy_latency_transmission(exports)
+    if verbose:
+        print("5. Energy, latency, and transmission...")
+    energy_df = run_energy_latency_transmission(exports, verbose=verbose)
     saved.extend(save_results_table(energy_df, output_dir, "energy_latency_transmission_summary.csv", "energy_latency_transmission_latex.txt", "Energy, latency, transmission"))
 
-    print("6. Final reviewer summary...")
+    if verbose:
+        print("6. Final reviewer summary...")
     final_df = run_final_summary(ablation_df, stats_df, uncertainty_df, energy_df)
     saved.extend(save_results_table(final_df, output_dir, "reviewer_final_summary.csv", "reviewer_final_summary_latex.txt", "Reviewer final summary"))
 
@@ -707,8 +741,10 @@ def run_additional_analyses(export_dirs_by_dataset, output_dir):
         "export_dirs": export_dirs_by_dataset,
         "saved_files": saved,
         "output_dir": output_dir,
+        "exports": exports,
         "ablation_df": ablation_df,
         "threshold_df": thresh_df,
+        "condition_df": condition_df,
         "uncertainty_df": uncertainty_df,
         "stats_df": stats_df,
         "energy_df": energy_df,
@@ -717,7 +753,7 @@ def run_additional_analyses(export_dirs_by_dataset, output_dir):
 
 
 def print_run_summary(result):
-    """Print paths and saved artefacts after run_additional_analyses."""
+    """Print paths and saved artefacts after run_additional_analyses (verbose mode)."""
     loaded = result.get("loaded", [])
     print(f"\nLoaded exports for: {loaded if loaded else 'none'}")
     if result.get("export_dirs"):
@@ -733,3 +769,209 @@ def print_run_summary(result):
     print("Saved files:")
     for path in result.get("saved_files", []):
         print(f"  - {os.path.basename(path)}")
+
+
+# ---------------------------------------------------------------------------
+# Notebook display helpers
+# ---------------------------------------------------------------------------
+
+REPRESENTATIVE_PAIR_INDEX = 0
+KEY_STAT_METRICS = ["balanced_accuracy", "malignant_recall", "worst_group_tpr", "expected_energy_per_sample"]
+
+
+def _round_df(df, decimals=4):
+    out = df.copy()
+    for col in out.select_dtypes(include=[np.number]).columns:
+        out[col] = out[col].round(decimals)
+    return out
+
+
+def _display_title(title):
+    try:
+        from IPython.display import display, Markdown
+        display(Markdown(f"### {title}"))
+    except ImportError:
+        print(f"\n{title}\n")
+
+
+def _display_table(df):
+    try:
+        from IPython.display import display
+        display(_round_df(df))
+    except ImportError:
+        print(_round_df(df).to_string(index=False))
+
+
+def build_export_status_table(exports, export_dirs, condition_df=None):
+    """One row per dataset summarising export validity."""
+    rows = []
+    for dataset in DATASET_NAMES:
+        export_path = export_dirs.get(dataset, "")
+        exp = next((e for e in exports if e is not None and e["dataset"] == dataset), None)
+        if exp is None:
+            rows.append({
+                "dataset": dataset,
+                "export_found": "no",
+                "pairs_loaded": 0,
+                "n_samples": 0,
+                "route_agreement": np.nan,
+            })
+            continue
+        n_pairs = len(exp["pair_manifest"]["pair_index"].unique())
+        n_samples = int(exp["pair_manifest"]["n_samples"].iloc[0]) if not exp["pair_manifest"].empty else 0
+        agreement = np.nan
+        if condition_df is not None and not condition_df.empty:
+            sub = condition_df[condition_df["dataset"] == dataset]
+            if not sub.empty:
+                agreement = float(sub[["entropy_agreement", "gap_agreement", "risk_agreement"]].min().min())
+        rows.append({
+            "dataset": dataset,
+            "export_found": "yes",
+            "pairs_loaded": n_pairs,
+            "n_samples": n_samples,
+            "route_agreement": agreement,
+        })
+    return pd.DataFrame(rows)
+
+
+def format_ablation_display(ablation_df, pair_index=REPRESENTATIVE_PAIR_INDEX):
+    """Routing ablation for one representative pair per dataset."""
+    if ablation_df is None or ablation_df.empty:
+        return pd.DataFrame()
+    sub = ablation_df[ablation_df["pair_index"] == pair_index].copy()
+    if sub.empty:
+        sub = ablation_df.groupby("dataset", group_keys=False).first()
+    return sub[[
+        "dataset", "pair_label", "routing_variant", "routing_rate",
+        "balanced_accuracy", "malignant_recall", "worst_group_tpr", "tpr_gap",
+        "expected_energy_per_sample",
+    ]].rename(columns={"expected_energy_per_sample": "energy_per_sample"})
+
+
+def format_uncertainty_display(uncertainty_df, pair_index=REPRESENTATIVE_PAIR_INDEX):
+    """Lite-model uncertainty metrics for one pair per dataset."""
+    if uncertainty_df is None or uncertainty_df.empty:
+        return pd.DataFrame()
+    sub = uncertainty_df[
+        (uncertainty_df["model"] == "Lite") & (uncertainty_df["pair_index"] == pair_index)
+    ].copy()
+    if sub.empty:
+        sub = uncertainty_df[uncertainty_df["model"] == "Lite"].groupby("dataset", group_keys=False).first()
+    return sub[[
+        "dataset", "pair_label", "ece", "brier_score",
+        "entropy_auroc_lite_error", "mean_entropy_correct", "mean_entropy_incorrect",
+    ]].rename(columns={
+        "ece": "lite_ece",
+        "brier_score": "lite_brier",
+        "entropy_auroc_lite_error": "entropy_error_auroc",
+    })
+
+
+def format_stats_display(stats_df):
+    """Key statistical comparisons: EcoFair vs Lite / Heavy."""
+    if stats_df is None or stats_df.empty:
+        return pd.DataFrame()
+    mask = (
+        stats_df["metric"].isin(KEY_STAT_METRICS)
+        & stats_df["comparison"].isin(["EcoFair vs Lite", "EcoFair vs Heavy"])
+    )
+    cols = ["dataset", "pair_label", "comparison", "metric", "mean_diff", "paired_t_pvalue", "cohens_dz", "n_folds"]
+    sub = stats_df.loc[mask, [c for c in cols if c in stats_df.columns]].copy()
+    return sub.sort_values(["dataset", "comparison", "metric"]).reset_index(drop=True)
+
+
+def format_energy_display(energy_df, pair_index=REPRESENTATIVE_PAIR_INDEX):
+    """Energy and transmission summary with explicit latency availability."""
+    if energy_df is None or energy_df.empty:
+        return pd.DataFrame()
+    sub = energy_df[energy_df["pair_index"] == pair_index].copy()
+    if sub.empty:
+        sub = energy_df.groupby("dataset", group_keys=False).first()
+    sub = sub.copy()
+    sub["latency_available"] = sub.apply(
+        lambda r: "yes" if pd.notna(r.get("latency_lite_ms")) or pd.notna(r.get("latency_heavy_ms")) else "no",
+        axis=1,
+    )
+    return sub[[
+        "dataset", "pair_label",
+        "energy_lite_per_sample", "energy_heavy_per_sample",
+        "energy_ecofair_expected_per_sample", "energy_saving_vs_heavy_pct",
+        "transmission_kb_selected_only", "latency_available",
+    ]].rename(columns={
+        "energy_lite_per_sample": "lite_energy",
+        "energy_heavy_per_sample": "heavy_energy",
+        "energy_ecofair_expected_per_sample": "ecofair_energy",
+        "energy_saving_vs_heavy_pct": "saving_vs_heavy_pct",
+        "transmission_kb_selected_only": "embedding_kb_expected",
+    })
+
+
+def show_threshold_sensitivity_figure(thresh_df):
+    """Inline 1×3 threshold sensitivity figure for notebook display."""
+    if thresh_df is None or thresh_df.empty:
+        return
+    metrics = [
+        ("routing_rate", "Routing"),
+        ("balanced_accuracy", "Bal. acc."),
+        ("malignant_recall", "Mal. recall"),
+        ("expected_energy_per_sample", "Energy (J)"),
+    ]
+    dataset_list = [ds for ds in DATASET_NAMES if ds in thresh_df["dataset"].unique()]
+    if not dataset_list:
+        return
+    fig, axes = plt.subplots(1, len(dataset_list), figsize=(5 * len(dataset_list), 4), squeeze=False)
+    for ax, dataset in zip(axes[0], dataset_list):
+        sub = thresh_df[thresh_df["dataset"] == dataset]
+        agg = sub.groupby("threshold_multiplier")[[m[0] for m in metrics]].mean().reset_index()
+        for col, label in metrics:
+            ax.plot(agg["threshold_multiplier"], agg[col], marker="o", label=label, linewidth=1.5)
+        ax.set_xlabel("Threshold multiplier")
+        ax.set_title(dataset)
+        ax.legend(fontsize=7)
+        ax.grid(True, alpha=0.3)
+    fig.suptitle("Threshold sensitivity", fontsize=12, y=1.02)
+    fig.tight_layout()
+    plt.show()
+
+
+def show_reviewer_results(result, pair_index=REPRESENTATIVE_PAIR_INDEX):
+    """
+    Display compact reviewer-facing tables and figures for the front notebook.
+
+    Shows six outputs: export status, ablation, threshold figure, uncertainty,
+    statistical tests, and energy/transmission.
+    """
+    if not result.get("loaded"):
+        _display_title("Reviewer export status")
+        _display_table(build_export_status_table(
+            result.get("exports", []), result.get("export_dirs", {}),
+        ))
+        print("No exports loaded. Run dataset front scripts first.")
+        return
+
+    ablation_df = result.get("ablation_df")
+    uncertainty_df = result.get("uncertainty_df")
+    stats_df = result.get("stats_df")
+    energy_df = result.get("energy_df")
+    thresh_df = result.get("threshold_df")
+    condition_df = result.get("condition_df")
+
+    _display_title("1. Reviewer export status")
+    _display_table(build_export_status_table(
+        result.get("exports", []), result.get("export_dirs", {}), condition_df,
+    ))
+
+    _display_title("2. Routing signal ablation")
+    _display_table(format_ablation_display(ablation_df, pair_index))
+
+    _display_title("3. Threshold sensitivity")
+    show_threshold_sensitivity_figure(thresh_df)
+
+    _display_title("4. Uncertainty quality (Lite model)")
+    _display_table(format_uncertainty_display(uncertainty_df, pair_index))
+
+    _display_title("5. Statistical testing")
+    _display_table(format_stats_display(stats_df))
+
+    _display_title("6. Energy, transmission & latency")
+    _display_table(format_energy_display(energy_df, pair_index))
