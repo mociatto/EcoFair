@@ -13,11 +13,6 @@
 !feature_extraction/
 !feature_extraction/**
 
-# Don't ignore main pipeline notebooks (at repo root)
-!ecofair-ham.ipynb
-!ecofair-pad.ipynb
-!ecofair-bcn.ipynb
-
 # Don't ignore readme files
 !README.md
 
